@@ -2,31 +2,65 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+// Laravel Auth base
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, Notifiable;
+    protected $table = 'users';
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    protected $fillable = [
+        'role',
+        'nik',
+        'nama',
+        'instansi',
+        'jabatan',
+        'telp',
+        'password',
+        'sts',
+        'approval',
+        'tgldaftar',
+        'tglupdate',
+        'tgldisabled',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'tgldaftar' => 'datetime',
+        'tglupdate' => 'datetime',
+        'tgldisabled' => 'datetime',
+    ];
+
+    public function verificationCodes()
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->hasMany(VerificationCode::class);
+    }
+
+
+    public function scopeAdmin($query)
+    {
+        return $query->where('role', 'admin');
+    }
+
+    public function scopeUser($query)
+    {
+        return $query->where('role', 'user');
+    }
+
+    public function scopePending($query)
+    {
+        return $query->where('approval', 'pending');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('sts', 'aktif');
     }
 }
