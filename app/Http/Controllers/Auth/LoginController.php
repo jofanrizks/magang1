@@ -11,49 +11,60 @@ class LoginController extends Controller
 {
     public function login(Request $request)
     {
-        $request->validate([
-            'nik' => 'required',
-            'password' => 'required'
+        $credentials = $request->only('nik','password');
+
+        if(!$token = auth()->attempt($credentials))
+        {
+            return response()->json([
+                'success'=>false,
+                'message'=>'NIK atau password salah'
+            ],401);
+        }
+
+        $user = auth()->user();
+
+        if($user->approval != 'approved')
+        {
+            return response()->json([
+                'success'=>false,
+                'message'=>'Menunggu approval admin'
+            ],403);
+        }
+
+        if($user->sts != 'aktif')
+        {
+            return response()->json([
+                'success'=>false,
+                'message'=>'Akun tidak aktif'
+            ],403);
+        }
+
+        return response()->json([
+            'success'=>true,
+            'token'=>$token,
+            'user'=>$user
         ]);
+    }
 
-        $user = User::where('nik', $request->nik)->first();
-
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
-        }
-
-        if (!Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Password salah'
-            ], 401);
-        }
-
-        if ($user->approval !== 'approved') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Akun belum di-approve admin'
-            ], 403);
-        }
-
-        if ($user->sts !== 'aktif') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Akun tidak aktif'
-            ], 403);
-        }
-
-        $token = $user->createToken('auth_token')->plainTextToken;
+    public function logout(Request $request)
+    {
+        auth()->logout();
 
         return response()->json([
             'success' => true,
-            'token' => $token,
-            'user' => $user
+            'message' => 'Logout berhasil'
         ]);
     }
+
+
+
+    public function me()
+    {
+        return response()->json(auth()->user());
+    }
+
+
+
     public function testing (Request $request)
     {
         return response()->json([
