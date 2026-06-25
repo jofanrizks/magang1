@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ActivationController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\SettingController;
 
 //PUBLIC
 Route::post('/register', [RegisterController::class, 'register']);
@@ -38,3 +39,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/getApprovedUsers', [UserController::class, 'getApprovedUsers']);
 
 });
+
+Route::get('/settings', [SettingController::class, 'index']);
+
+Route::middleware('auth:api')->post(
+    '/settings',
+    [SettingController::class, 'update']
+);
