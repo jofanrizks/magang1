@@ -4,11 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Setting extends Model
+class Banner extends Model
 {
     protected $fillable = [
-        'app_name',
-        'logo',
-        'primary_color'
+        'title',
+        'image',
+        'is_active'
     ];
 }

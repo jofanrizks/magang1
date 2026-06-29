@@ -17,30 +17,32 @@ class SettingController extends Controller
     public function update(Request $request)
     {
         $request->validate([
-            'app_name' => 'required|string',
-            'primary_color' => 'required|string',
-            'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
-            'banner' => 'nullable|image|mimes:jpg,jpeg,png|max:4096',
+            'app_name' => 'required',
+            'primary_color' => 'required',
+            'logo' => 'nullable|image'
         ]);
 
         $setting = Setting::first();
 
         if (!$setting) {
+
             $setting = Setting::create();
+
         }
 
         if ($request->hasFile('logo')) {
-            $setting->logo = $request->file('logo')
+
+            $setting->logo = $request
+                ->file('logo')
                 ->store('logo', 'public');
+
         }
 
-        if ($request->hasFile('banner')) {
-            $setting->banner = $request->file('banner')
-                ->store('banner', 'public');
-        }
+        $setting->app_name =
+            $request->app_name;
 
-        $setting->app_name = $request->app_name;
-        $setting->primary_color = $request->primary_color;
+        $setting->primary_color =
+            $request->primary_color;
 
         $setting->save();
 

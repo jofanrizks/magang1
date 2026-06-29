@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\ActivationController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\BannerController;
 
 //PUBLIC
 Route::post('/register', [RegisterController::class, 'register']);
@@ -34,9 +35,15 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/users/pending', [UserController::class, 'pendingUsers']);
     Route::post('/users/{id}/send-otp', [UserController::class, 'sendOtp']);
     Route::post('/users/{id}/reject', [UserController::class, 'rejectUser']);
-
+    Route::post('/users/{id}/disable', [UserController::class, 'disableUser']);
     Route::get('/getallusers', [UserController::class, 'getAllUsers']);
     Route::get('/getApprovedUsers', [UserController::class, 'getApprovedUsers']);
+    Route::get('/dashboard', [UserController::class, 'dashboard']);
+
+    //SETTING DINAMIS
+    Route::post('/banner', [BannerController::class, 'store']);
+    Route::get('/banner', [BannerController::class, 'index']);
+    Route::delete('/banner/{id}', [BannerController::class, 'destroy']);
 
 });
 
