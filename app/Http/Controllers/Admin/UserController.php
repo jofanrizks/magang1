@@ -8,6 +8,7 @@ use App\Services\OtpService;
 use App\Services\WhatsappService;
 use App\Models\User;
 use Carbon\Carbon;
+use App\Models\ActivityLog;
 
 class UserController extends Controller
 {
@@ -59,6 +60,11 @@ class UserController extends Controller
                 'sts' => 'disabled',
                 'tgldisabled' => now(),
             ]);
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'activity' => 'Rejected',
+                'description' => 'Akun ditolak admin'
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -108,8 +114,32 @@ class UserController extends Controller
         ]);
     }
 
+    public function enableUser($id)
+    {
+        $user = User::find($id);
 
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan'
+            ], 404);
+        }
 
+        $user->update([
+            'sts' => 'aktif',
+            'tgldisabled' => null
+        ]);
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Account Enabled',
+            'description' => 'Akun diaktifkan kembali oleh admin'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User berhasil diaktifkan'
+        ]);
+    }
 
     public function dashboard()
     {

@@ -26,24 +26,23 @@ class BannerController extends Controller
         'images.*' => 'image|mimes:jpg,jpeg,png|max:2048'
     ]);
 
-    $banners = [];
+        $banners = [];
 
-    foreach ($request->file('images') as $image) {
+        foreach ($request->file('images') as $image) {
 
-        $path = $image->store('banner', 'public');
+            $path = $image->store('banner', 'public');
 
-        $banners[] = Banner::create([
-            'title' => $request->title,
-            'image' => $path,
-            'is_active' => true
+            $banners[] = Banner::create([
+                'title' => $request->title,
+                'image' => $path,
+                'is_active' => true,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $banners,
         ]);
-
-    }
-
-    return response()->json([
-        'success' => true,
-        'data' => $banners
-    ]);
     }
 
     public function destroy($id)

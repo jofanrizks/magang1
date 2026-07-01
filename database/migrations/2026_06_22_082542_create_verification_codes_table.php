@@ -17,9 +17,11 @@ return new class extends Migration
                 ->constrained()
                 ->cascadeOnDelete();
             $table->string('code', 4);
-            $table->enum('type', [
+               $table->enum('type', [
                 'activation',
-                'reset_password'
+                'reset_password',
+                'disable_account',
+                'reactivate_account'
             ]);
             $table->boolean('is_used')
                 ->default(false);

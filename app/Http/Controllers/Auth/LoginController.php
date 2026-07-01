@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
+
 class LoginController extends Controller
 {
     public function login(Request $request)
@@ -38,6 +39,13 @@ class LoginController extends Controller
                 'message'=>'Akun tidak aktif'
             ],403);
         }
+        if ($user->sts === 'disabled') 
+        {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Anda sedang dinonaktifkan. Silakan aktifkan kembali akun Anda.'
+            ], 403);
+        }
 
         return response()->json([
             'success'=>true,
@@ -61,16 +69,5 @@ class LoginController extends Controller
     public function me()
     {
         return response()->json(auth()->user());
-    }
-
-
-
-    public function testing (Request $request)
-    {
-        return response()->json([
-            'success' => true,
-            'message' => 'Testing berhasil',
-            'data' => $request->all()
-        ], 200);
     }
 }

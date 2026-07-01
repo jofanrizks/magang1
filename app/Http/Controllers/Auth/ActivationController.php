@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\OtpService;
 use Illuminate\Http\Request;
+use App\Models\ActivityLog;
 
 class ActivationController extends Controller
 {
@@ -46,7 +47,13 @@ class ActivationController extends Controller
 
         $user->update([
             'approval' => 'approved',
-            'sts' => 'aktif'
+            'sts' => 'aktif',
+            'tglapproval' => now(),
+        ]);
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Approved',
+            'description' => 'Akun disetujui admin'
         ]);
 
         return response()->json([

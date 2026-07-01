@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use App\Models\ActivityLog;
 
 class RegisterController extends Controller
 {
@@ -33,6 +34,12 @@ class RegisterController extends Controller
             $user->tgldaftar = now();
 
             $user->save();
+
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'activity' => 'Register',
+                'description' => 'Registrasi akun'
+            ]);
         return response()->json([
             'success' => true,
             'message' => 'Registrasi berhasil, menunggu approval admin',

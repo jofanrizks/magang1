@@ -23,6 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'sts',
         'approval',
         'tgldaftar',
+        'tglapproval',
         'tglupdate',
         'tgldisabled',
     ];
@@ -34,6 +35,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $casts = [
         'tgldaftar' => 'datetime',
+        'tglapproval' => 'datetime',
         'tglupdate' => 'datetime',
         'tgldisabled' => 'datetime',
     ];
@@ -70,5 +72,9 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTCustomClaims()
     {
         return [];
+    }
+    public function activityLogs()
+    {
+        return $this->hasMany(ActivityLog::class);
     }
 }   

@@ -1,44 +1,55 @@
 <?php
 
-namespace App\Http\Controllers\Auth;
+namespace App\Http\Controllers\Account;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Services\OtpService;
-use App\Services\WhatsappService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use App\Services\OtpService;
+use App\Services\WhatsappService;
 use App\Models\ActivityLog;
 
-class ResetPasswordController extends Controller
+class AccountController extends Controller
 {
-    public function sendOtp(
+    /**
+     * Kirim OTP untuk disable akun
+     */
+    public function sendDisableOtp(
         Request $request,
         OtpService $otpService,
         WhatsappService $whatsappService
-    )
-    {
+    ) {
+
         $request->validate([
-            'nik' => 'required'
+            'password' => 'required'
         ]);
 
-        $user = User::where('nik', $request->nik)->first();
+        $user = auth()->user();
 
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        if (!Hash::check($request->password, $user->password)) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Password salah'
+            ], 401);
+
         }
 
         $otp = $otpService->generate(
             $user->id,
-            'reset_password'
+            'disable_account'
         );
 
         $whatsappService->send(
             $user->telp,
-            "RESET PASSWORD\n\nKode OTP Anda: {$otp->code}\n\nOTP berlaku selama 5 menit."
+            "Kode OTP untuk menonaktifkan akun Anda adalah {$otp->code}"
         );
 
         return response()->json([
@@ -46,57 +57,60 @@ class ResetPasswordController extends Controller
             'message' => 'OTP berhasil dikirim ke WhatsApp'
         ]);
     }
-    public function resetPassword(
+
+    /**
+     * Disable akun
+     */
+    public function disableAccount(
         Request $request,
         OtpService $otpService
-    )
-    {
+    ) {
+
         $request->validate([
-            'nik' => 'required',
-            'otp' => 'required',
-            'password' => 'required|min:6|confirmed'
+            'otp' => 'required|digits:4'
         ]);
 
-        $user = User::where(
-            'nik',
-            $request->nik
-        )->first();
+        $user = auth()->user();
 
         if (!$user) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
+                'message' => 'Unauthorized'
+            ], 401);
+
         }
 
         $valid = $otpService->verify(
             $user->id,
             $request->otp,
-            'reset_password'
+            'disable_account'
         );
 
         if (!$valid) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'OTP tidak valid atau expired'
+                'message' => 'OTP salah atau sudah expired'
             ], 400);
+
         }
 
         $user->update([
-            'password' => Hash::make(
-                $request->password
-            )
+            'sts' => 'disabled',
+            'tgldisabled' => now()
         ]);
-
         ActivityLog::create([
             'user_id' => $user->id,
-            'activity' => 'Reset Password',
-            'description' => 'User reset their password successfully'
+            'activity' => 'Account Disabled',
+            'description' => 'Pengguna menonaktifkan akun'
         ]);
+
+        auth()->logout();
 
         return response()->json([
             'success' => true,
-            'message' => 'Password berhasil diubah'
+            'message' => 'Akun berhasil dinonaktifkan'
         ]);
     }
 }

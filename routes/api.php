@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\BannerController;
+use App\Http\Controllers\Account\AccountController;
 
 //PUBLIC
 Route::post('/register', [RegisterController::class, 'register']);
@@ -45,11 +46,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/banner', [BannerController::class, 'index']);
     Route::delete('/banner/{id}', [BannerController::class, 'destroy']);
 
+    Route::get('/setting', [SettingController::class, 'index']);
+    Route::post('/setting', [SettingController::class, 'update']);
+    
+    // 
+    Route::post('/account/disable/send-otp', [AccountController::class, 'sendDisableOtp']);
+    Route::post('/account/disable', [AccountController::class, 'disableAccount']);
 });
-
-Route::get('/settings', [SettingController::class, 'index']);
-
-Route::middleware('auth:api')->post(
-    '/settings',
-    [SettingController::class, 'update']
-);
