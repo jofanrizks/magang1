@@ -37,9 +37,11 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/users/{id}/send-otp', [UserController::class, 'sendOtp']);
     Route::post('/users/{id}/reject', [UserController::class, 'rejectUser']);
     Route::post('/users/{id}/disable', [UserController::class, 'disableUser']);
+    Route::post('/users/{id}/enable', [UserController::class, 'enableUser']);
     Route::get('/getallusers', [UserController::class, 'getAllUsers']);
     Route::get('/getApprovedUsers', [UserController::class, 'getApprovedUsers']);
     Route::get('/dashboard', [UserController::class, 'dashboard']);
+    Route::get('/users/{id}/log', [UserController::class, 'logUser']);
 
     //SETTING DINAMIS
     Route::post('/banner', [BannerController::class, 'store']);

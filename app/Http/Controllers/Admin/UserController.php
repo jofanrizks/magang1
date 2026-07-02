@@ -72,7 +72,7 @@ class UserController extends Controller
             ]);
         }
 
-        public function getAllUsers()
+    public function getAllUsers()
         {
             $users = User::all();
 
@@ -81,7 +81,7 @@ class UserController extends Controller
                 'data' => $users
             ]);
         }
-        public function getApprovedUsers()
+    public function getApprovedUsers()
         {
             $users = User::where('approval', 'approved')->get();
 
@@ -90,7 +90,6 @@ class UserController extends Controller
                 'data' => $users
             ]);
         }
-
 
     public function disableUser($id)
     {
@@ -106,6 +105,11 @@ class UserController extends Controller
         $user->update([
             'sts' => 'disabled',
             'tgldisabled' => Carbon::now()
+        ]);
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Account Disabled',
+            'description' => 'Akun dinonaktifkan oleh admin'
         ]);
 
         return response()->json([
@@ -183,6 +187,24 @@ class UserController extends Controller
                 ],
                 'recent_users' => $recentUsers,
             ]
+        ]);
+    }
+    public function logUser($id)
+    {
+        $user = User::with([
+            'activityLogs' => fn($q) => $q->latest()
+        ])->find($id);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $user
         ]);
     }
 }

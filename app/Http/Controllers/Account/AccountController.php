@@ -11,9 +11,7 @@ use App\Models\ActivityLog;
 
 class AccountController extends Controller
 {
-    /**
-     * Kirim OTP untuk disable akun
-     */
+
     public function sendDisableOtp(
         Request $request,
         OtpService $otpService,
