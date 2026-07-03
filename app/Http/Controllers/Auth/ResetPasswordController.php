@@ -91,7 +91,8 @@ class ResetPasswordController extends Controller
         ActivityLog::create([
             'user_id' => $user->id,
             'activity' => 'Reset Password',
-            'description' => 'User reset password via OTP'
+            'description' => 'User reset password via OTP',
+            'ip_address' => $request->ip(),
         ]);
 
         return response()->json([

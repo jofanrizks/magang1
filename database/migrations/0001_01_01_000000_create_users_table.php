@@ -38,6 +38,9 @@ return new class extends Migration
                 'approved',
                 'rejected'
             ])->default('pending');
+            
+            $table->integer('login_attempt')->default(0);
+
 
             $table->timestamp('tgldaftar')->useCurrent();
 

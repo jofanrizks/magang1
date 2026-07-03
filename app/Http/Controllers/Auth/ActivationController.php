@@ -53,7 +53,8 @@ class ActivationController extends Controller
         ActivityLog::create([
             'user_id' => $user->id,
             'activity' => 'Approved',
-            'description' => 'Akun disetujui admin'
+            'description' => 'Akun disetujui admin',
+            'ip_address' => $request->ip(),
         ]);
 
         return response()->json([

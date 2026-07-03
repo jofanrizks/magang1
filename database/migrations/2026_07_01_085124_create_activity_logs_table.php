@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('activity_logs', function (Blueprint $table) {
@@ -20,17 +17,15 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->string('activity');
-
             $table->text('description')->nullable();
+
+            $table->string('ip_address', 45)->nullable();
 
             $table->timestamps();
 
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('activity_logs');

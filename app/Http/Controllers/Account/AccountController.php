@@ -49,16 +49,18 @@ class AccountController extends Controller
             $user->telp,
             "Kode OTP untuk menonaktifkan akun Anda adalah {$otp->code}"
         );
-
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Request Disable OTP',
+            'description' => 'Pengguna meminta OTP untuk menonaktifkan akun',
+            'ip_address' => $request->ip(),
+        ]);
         return response()->json([
             'success' => true,
             'message' => 'OTP berhasil dikirim ke WhatsApp'
         ]);
     }
 
-    /**
-     * Disable akun
-     */
     public function disableAccount(
         Request $request,
         OtpService $otpService
@@ -101,7 +103,9 @@ class AccountController extends Controller
         ActivityLog::create([
             'user_id' => $user->id,
             'activity' => 'Account Disabled',
-            'description' => 'Pengguna menonaktifkan akun'
+            'description' => 'Pengguna menonaktifkan akun',
+            'ip_address' => $request->ip(),
+
         ]);
 
         auth()->logout();

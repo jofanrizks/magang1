@@ -38,7 +38,8 @@ class RegisterController extends Controller
             ActivityLog::create([
                 'user_id' => $user->id,
                 'activity' => 'Register',
-                'description' => 'Registrasi akun'
+                'description' => 'Registrasi akun',
+                'ip_address' => $request->ip(),
             ]);
         return response()->json([
             'success' => true,

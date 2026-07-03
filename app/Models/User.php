@@ -22,6 +22,7 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'sts',
         'approval',
+        'login_attempt',
         'tgldaftar',
         'tglapproval',
         'tglupdate',
