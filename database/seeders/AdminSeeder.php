@@ -17,7 +17,9 @@ class AdminSeeder extends Seeder
             'instansi' => 'System',
             'jabatan' => 'Administrator',
             'telp' => '081111111111',
-            'password' => Hash::make('admin123'),
+            'password' => Hash::make(
+                env('ADMIN_DEFAULT_PASSWORD', 'ChangeThisAdminPassword123!')
+            ),
 
             'sts' => 'aktif',
             'approval' => 'approved',

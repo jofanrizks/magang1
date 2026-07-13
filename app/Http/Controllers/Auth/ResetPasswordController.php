@@ -26,9 +26,9 @@ class ResetPasswordController extends Controller
 
         if (!$user) {
             return response()->json([
-                'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
+                'success' => true,
+                'message' => 'Jika NIK terdaftar, OTP akan dikirim ke WhatsApp'
+            ]);
         }
 
         $otp = $otpService->generate(
@@ -36,10 +36,19 @@ class ResetPasswordController extends Controller
             'reset_password'
         );
 
-        $whatsappService->send(
+        $sent = $whatsappService->send(
             $user->telp,
-            "RESET PASSWORD\n\nKode OTP Anda: {$otp->code}\n\nOTP berlaku selama 5 menit."
+            "RESET PASSWORD\n\nKode OTP Anda: {$otp->plain_code}\n\nOTP berlaku selama 5 menit."
         );
+
+        if (!$sent) {
+            $otp->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'OTP gagal dikirim'
+            ], 502);
+        }
 
         return response()->json([
             'success' => true,
@@ -53,7 +62,7 @@ class ResetPasswordController extends Controller
     {
         $request->validate([
             'nik' => 'required',
-            'otp' => 'required',
+            'otp' => 'required|digits:6',
             'password' => 'required|min:6|confirmed'
         ]);
 
@@ -65,8 +74,8 @@ class ResetPasswordController extends Controller
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
+                'message' => 'NIK atau OTP tidak valid atau expired'
+            ], 400);
         }
 
         $valid = $otpService->verify(

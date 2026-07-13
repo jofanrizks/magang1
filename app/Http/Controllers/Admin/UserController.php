@@ -14,7 +14,9 @@ class UserController extends Controller
 {
     public function pendingUsers()
     {
-        $users = User::where('approval', 'pending')->get();
+        $users = User::where('approval', 'pending')
+            ->select($this->userListFields())
+            ->paginate(25);
 
         return response()->json([
             'success' => true,
@@ -34,15 +36,23 @@ class UserController extends Controller
             'activation'
         );
 
-        $whatsappService->send(
+        $sent = $whatsappService->send(
             $user->telp,
-            "Kode aktivasi Anda: {$otp->code}"
+            "Kode aktivasi Anda: {$otp->plain_code}"
         );
+
+        if (!$sent) {
+            $otp->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'OTP gagal dikirim'
+            ], 502);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'OTP berhasil dikirim',
-            'otp' => $otp->code 
+            'message' => 'OTP berhasil dikirim'
         ]);
     }
     public function rejectUser($id){
@@ -74,7 +84,8 @@ class UserController extends Controller
 
     public function getAllUsers()
         {
-            $users = User::all();
+            $users = User::select($this->userListFields())
+                ->paginate(25);
 
             return response()->json([
                 'success' => true,
@@ -83,7 +94,9 @@ class UserController extends Controller
         }
     public function getApprovedUsers()
         {
-            $users = User::where('approval', 'approved')->get();
+            $users = User::where('approval', 'approved')
+                ->select($this->userListFields())
+                ->paginate(25);
 
             return response()->json([
                 'success' => true,
@@ -206,5 +219,25 @@ class UserController extends Controller
             'success' => true,
             'data' => $user
         ]);
+    }
+
+    private function userListFields(): array
+    {
+        return [
+            'id',
+            'role',
+            'group_id',
+            'nik',
+            'nama',
+            'instansi',
+            'jabatan',
+            'telp',
+            'sts',
+            'approval',
+            'login_attempt',
+            'tgldaftar',
+            'tglapproval',
+            'tgldisabled',
+        ];
     }
 }

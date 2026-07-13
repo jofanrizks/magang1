@@ -8,9 +8,156 @@ use Illuminate\Support\Facades\Hash;
 use App\Services\OtpService;
 use App\Services\WhatsappService;
 use App\Models\ActivityLog;
+use App\Models\User;
 
 class AccountController extends Controller
 {
+    public function sendReactivateOtp(
+        Request $request,
+        OtpService $otpService,
+        WhatsappService $whatsappService
+    ) {
+        $request->validate([
+            'nik' => 'required'
+        ]);
+
+        $user = User::where('nik', $request->nik)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan'
+            ], 404);
+        }
+
+        if ($user->role != 'user') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reaktivasi hanya untuk akun user'
+            ], 403);
+        }
+
+        if ($user->sts != 'disabled') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun tidak dalam status disabled'
+            ], 400);
+        }
+
+        $otp = $otpService->generate(
+            $user->id,
+            'reactivate_account'
+        );
+
+        $sent = $whatsappService->send(
+            $user->telp,
+            "Kode OTP untuk reaktivasi akun Anda adalah {$otp->plain_code}"
+        );
+
+        if (!$sent) {
+            $otp->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'OTP gagal dikirim'
+            ], 502);
+        }
+
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Reactivate OTP Sent',
+            'description' => 'OTP reaktivasi akun dikirim',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP berhasil dikirim ke WhatsApp'
+        ]);
+    }
+
+    public function reactivateAccount(
+        Request $request,
+        OtpService $otpService
+    ) {
+        $request->validate([
+            'nik' => 'required',
+            'code' => 'required|digits:6'
+        ]);
+
+        $user = User::where('nik', $request->nik)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan'
+            ], 404);
+        }
+
+        if ($user->role != 'user') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reaktivasi hanya untuk akun user'
+            ], 403);
+        }
+
+        if ($user->sts != 'disabled') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun tidak dalam status disabled'
+            ], 400);
+        }
+
+        $valid = $otpService->verify(
+            $user->id,
+            $request->code,
+            'reactivate_account'
+        );
+
+        if (!$valid) {
+            return response()->json([
+                'success' => false,
+                'message' => 'OTP salah atau sudah expired'
+            ], 400);
+        }
+
+        $user->update([
+            'sts' => 'aktif',
+            'login_attempt' => 0,
+            'tgldisabled' => null,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'activity' => 'Reactivate Account',
+            'description' => 'Akun berhasil diaktifkan kembali menggunakan OTP',
+            'ip_address' => $request->ip(),
+        ]);
+
+        $activityLogs = ActivityLog::where('user_id', $user->id)
+            ->latest()
+            ->limit(10)
+            ->get([
+                'id',
+                'user_id',
+                'activity',
+                'description',
+                'ip_address',
+                'created_at',
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Akun berhasil diaktifkan kembali',
+            'data' => [
+                'user' => $user->fresh()->makeHidden([
+                    'password',
+                    'remember_token',
+                ]),
+                'activity_logs' => $activityLogs,
+            ],
+        ]);
+    }
 
     public function sendDisableOtp(
         Request $request,
@@ -45,10 +192,20 @@ class AccountController extends Controller
             'disable_account'
         );
 
-        $whatsappService->send(
+        $sent = $whatsappService->send(
             $user->telp,
-            "Kode OTP untuk menonaktifkan akun Anda adalah {$otp->code}"
+            "Kode OTP untuk menonaktifkan akun Anda adalah {$otp->plain_code}"
         );
+
+        if (!$sent) {
+            $otp->delete();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'OTP gagal dikirim'
+            ], 502);
+        }
+
         ActivityLog::create([
             'user_id' => $user->id,
             'activity' => 'Request Disable OTP',
@@ -67,7 +224,7 @@ class AccountController extends Controller
     ) {
 
         $request->validate([
-            'otp' => 'required|digits:4'
+            'otp' => 'required|digits:6'
         ]);
 
         $user = auth()->user();

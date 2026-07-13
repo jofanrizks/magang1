@@ -6,6 +6,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
+use App\Models\Group;
+use App\Models\GroupFile;
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -14,6 +16,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'role',
+        'group_id',
         'nik',
         'nama',
         'instansi',
@@ -27,6 +30,7 @@ class User extends Authenticatable implements JWTSubject
         'tglapproval',
         'tglupdate',
         'tgldisabled',
+        'group_id',
     ];
 
     protected $hidden = [
@@ -77,5 +81,14 @@ class User extends Authenticatable implements JWTSubject
     public function activityLogs()
     {
         return $this->hasMany(ActivityLog::class);
+    }
+   public function group()
+    {
+        return $this->belongsTo(Group::class);
+    }
+
+    public function groupFiles()
+    {
+        return $this->hasMany(GroupFile::class);
     }
 }   

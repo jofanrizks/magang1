@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('user_id')
                 ->constrained()
                 ->cascadeOnDelete();
-            $table->string('code', 4);
+            $table->string('code');
                $table->enum('type', [
                 'activation',
                 'reset_password',

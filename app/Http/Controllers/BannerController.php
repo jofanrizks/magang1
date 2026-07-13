@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Banner;
 use Illuminate\Http\Request;
 use App\Models\ActivityLog;
+use Illuminate\Support\Facades\Storage;
 
 class BannerController extends Controller
 {
@@ -37,13 +38,7 @@ class BannerController extends Controller
 
         if ($banner) {
 
-            // hapus gambar lama
-            if (
-                $banner->image &&
-                \Storage::disk('public')->exists($banner->image)
-            ) {
-                \Storage::disk('public')->delete($banner->image);
-            }
+            $this->deleteImage($banner->image);
 
             $banner->update([
                 'image' => $path,
@@ -73,10 +68,14 @@ class BannerController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        Banner::findOrFail($id)
-            ->delete();
+        $banner = Banner::findOrFail($id);
+        $user = auth()->user();
+
+        $this->deleteImage($banner->image);
+
+        $banner->delete();
 
         ActivityLog::create([
             'user_id' => $user->id,
@@ -85,7 +84,15 @@ class BannerController extends Controller
             'ip_address' => $request->ip(),
         ]);
         return response()->json([
-            'success' => true
+            'success' => true,
+            'message' => 'Banner berhasil dihapus'
         ]);
+    }
+
+    private function deleteImage(?string $path): void
+    {
+        if ($path && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
     }
 }

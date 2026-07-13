@@ -18,6 +18,7 @@ class RegisterController extends Controller
             'instansi' => 'required',
             'jabatan' => 'required',
             'telp' => 'required|unique:users,telp',
+            'group_id' => 'nullable|exists:groups,id',
             'password' => 'required|min:6|confirmed',
         ]);
         $user = new User();
@@ -28,12 +29,14 @@ class RegisterController extends Controller
             $user->instansi = $request->instansi;
             $user->jabatan = $request->jabatan;
             $user->telp = $request->telp;
+            $user->group_id = $request->group_id;
             $user->password = Hash::make($request->password);
             $user->sts = 'pending';
             $user->approval = 'pending';
             $user->tgldaftar = now();
 
             $user->save();
+            $user->load('group');
 
             ActivityLog::create([
                 'user_id' => $user->id,

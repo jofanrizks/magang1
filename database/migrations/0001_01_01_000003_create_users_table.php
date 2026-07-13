@@ -19,7 +19,10 @@ return new class extends Migration
                 'admin',
                 'user'
             ])->default('user');
-
+            $table->foreignId('group_id')
+                ->nullable()
+                ->constrained('groups')
+                ->nullOnDelete();
             $table->string('nik')->unique();
             $table->string('nama');
             $table->string('instansi');

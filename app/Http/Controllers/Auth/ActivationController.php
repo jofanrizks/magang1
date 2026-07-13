@@ -17,7 +17,7 @@ class ActivationController extends Controller
     {
         $request->validate([
             'nik' => 'required',
-            'otp' => 'required'
+            'otp' => 'required|digits:6'
         ]);
 
         $user = User::where(
@@ -28,8 +28,8 @@ class ActivationController extends Controller
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
+                'message' => 'NIK atau OTP tidak valid'
+            ], 400);
         }
 
         $valid = $otpService->verify(

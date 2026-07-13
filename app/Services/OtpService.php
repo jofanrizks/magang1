@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\VerificationCode;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Hash;
 
 class OtpService
 {
@@ -14,27 +15,30 @@ class OtpService
             ->where('is_used', false)
             ->delete();
 
-        $otp = rand(1000, 9999);
+        $otp = (string) random_int(100000, 999999);
 
-        return VerificationCode::create([
+        $verificationCode = VerificationCode::create([
             'user_id' => $userId,
-            'code' => $otp,
+            'code' => Hash::make($otp),
             'type' => $type,
             'expired_at' => Carbon::now()->addMinutes(5),
         ]);
+
+        $verificationCode->plain_code = $otp;
+
+        return $verificationCode;
     }
 
     public function verify($userId, $code, $type)
     {
 
         $otp = VerificationCode::where('user_id', $userId)
-            ->where('code', trim($code))
             ->where('type', $type)
             ->where('is_used', false)
             ->where('expired_at', '>', now())
             ->first();
 
-        if (!$otp) {
+        if (!$otp || !Hash::check(trim($code), $otp->code)) {
             return false;
         }
 
