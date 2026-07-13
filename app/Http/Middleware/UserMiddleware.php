@@ -12,7 +12,7 @@ class UserMiddleware
         if (!auth()->check() || auth()->user()->role !== 'user') {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized'
+                'message' => 'Anda tidak memiliki akses untuk melakukan tindakan ini.'
             ], 403);
         }
 

@@ -272,4 +272,46 @@ class AccountController extends Controller
             'message' => 'Akun berhasil dinonaktifkan'
         ]);
     }
+
+    public function changeRequiredPassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'password' => 'required|min:6|confirmed',
+        ]);
+
+        $user = auth()->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Password lama salah'
+            ], 422);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->password),
+            'must_change_password' => false,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'actor_id' => $user->id,
+            'activity' => 'Required Password Changed',
+            'description' => 'Pengguna mengganti password wajib',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password berhasil diperbarui'
+        ]);
+    }
 }

@@ -17,26 +17,29 @@ class GroupFileController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->group_id) {
+        if ($user->role === 'user' && !$user->group_id) {
             return response()->json([
                 'success' => false,
                 'message' => 'User belum memiliki group.',
             ], 422);
         }
 
-        $files = GroupFile::with([
+        $query = GroupFile::with([
                 'group',
                 'user:id,nama',
-            ])
-            ->where('group_id', $user->group_id)
-            ->latest()
-            ->paginate(10);
+            ]);
+
+        if ($user->role === 'user') {
+            $query->where('group_id', $user->group_id);
+        }
+
+        $files = $query->latest()->paginate(10);
 
         return response()->json([
             'success' => true,
             'message' => 'Data file group berhasil diambil',
             'data' => [
-                'group' => $user->group,
+                'group' => $user->role === 'user' ? $user->group : null,
                 'files' => $files,
             ],
         ]);

@@ -18,7 +18,7 @@ class RegisterController extends Controller
             'instansi' => 'required',
             'jabatan' => 'required',
             'telp' => 'required|unique:users,telp',
-            'group_id' => 'nullable|exists:groups,id',
+            'group_id' => 'required|exists:groups,id',
             'password' => 'required|min:6|confirmed',
         ]);
         $user = new User();

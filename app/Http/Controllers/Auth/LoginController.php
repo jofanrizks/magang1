@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\ActivityLog;
+use App\Services\WhatsappService;
+use Illuminate\Support\Facades\Log;
 
 class LoginController extends Controller
 {
-    public function login(Request $request)
+    public function login(Request $request, WhatsappService $whatsappService)
     {
         $request->validate([
             'nik' => 'required',
@@ -47,7 +49,7 @@ class LoginController extends Controller
                 $this->logActivity(
                     $user,
                     'Login Failed',
-                    'Percobaan login gagal (password salah)',
+                    'Percobaan login gagal',
                     $request->ip()
                 );
 
@@ -59,8 +61,14 @@ class LoginController extends Controller
 
                     $this->logActivity(
                         $user,
-                        'Account Disabled',
-                        'Akun dinonaktifkan karena terlalu banyak percobaan login gagal',
+                        'Account Auto Disabled',
+                        'Akun dinonaktifkan karena 3 kali percobaan login gagal',
+                        $request->ip()
+                    );
+
+                    $this->sendAutoDisableNotification(
+                        $user->fresh(),
+                        $whatsappService,
                         $request->ip()
                     );
 
@@ -188,9 +196,39 @@ class LoginController extends Controller
     {
         ActivityLog::create([
             'user_id' => $user->id,
+            'actor_id' => null,
             'activity' => $activity,
             'description' => $description,
             'ip_address' => $ipAddress,
         ]);
+    }
+
+    private function sendAutoDisableNotification(
+        User $user,
+        WhatsappService $whatsappService,
+        ?string $ipAddress = null
+    ): void {
+        $message = "Halo, {$user->nama}.\n\n"
+            . "Akun Anda telah dinonaktifkan karena terdapat 3 kali percobaan login gagal.\n\n"
+            . 'Tanggal: ' . now()->format('d-m-Y H:i') . "\n"
+            . 'Alamat IP percobaan terakhir: ' . ($ipAddress ?? '-') . "\n\n"
+            . 'Jika ini bukan Anda, silakan lakukan reaktivasi akun menggunakan OTP atau hubungi administrator.';
+
+        try {
+            $sent = $whatsappService->send($user->telp, $message);
+
+            if (!$sent) {
+                Log::warning('Failed to send auto-disable WhatsApp notification.', [
+                    'user_id' => $user->id,
+                    'ip_address' => $ipAddress,
+                ]);
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to send auto-disable WhatsApp notification.', [
+                'user_id' => $user->id,
+                'ip_address' => $ipAddress,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }

@@ -23,14 +23,15 @@ class User extends Authenticatable implements JWTSubject
         'jabatan',
         'telp',
         'password',
+        'must_change_password',
         'sts',
         'approval',
+        'rejection_reason',
         'login_attempt',
         'tgldaftar',
         'tglapproval',
         'tglupdate',
         'tgldisabled',
-        'group_id',
     ];
 
     protected $hidden = [
@@ -43,6 +44,7 @@ class User extends Authenticatable implements JWTSubject
         'tglapproval' => 'datetime',
         'tglupdate' => 'datetime',
         'tgldisabled' => 'datetime',
+        'must_change_password' => 'boolean',
     ];
 
     public function verificationCodes()
@@ -81,6 +83,11 @@ class User extends Authenticatable implements JWTSubject
     public function activityLogs()
     {
         return $this->hasMany(ActivityLog::class);
+    }
+
+    public function actedActivityLogs()
+    {
+        return $this->hasMany(ActivityLog::class, 'actor_id');
     }
    public function group()
     {

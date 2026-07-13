@@ -10,9 +10,9 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        User::create([
-            'role' => 'admin',
+        $user = User::firstOrCreate([
             'nik' => '0000000000000001',
+        ], [
             'nama' => 'Super Admin',
             'instansi' => 'System',
             'jabatan' => 'Administrator',
@@ -23,7 +23,18 @@ class AdminSeeder extends Seeder
 
             'sts' => 'aktif',
             'approval' => 'approved',
+            'must_change_password' => false,
             'tgldaftar' => now(),
+        ]);
+
+        $user->update([
+            'role' => 'super_admin',
+            'group_id' => null,
+            'nama' => 'Super Admin',
+            'instansi' => 'System',
+            'jabatan' => 'Administrator',
+            'sts' => 'aktif',
+            'approval' => 'approved',
         ]);
     }
 }
