@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class GroupFileController extends Controller
 {
@@ -179,6 +180,139 @@ class GroupFileController extends Controller
             'message' => 'File berhasil diunggah',
             'data' => $groupFile,
         ], 201);
+    }
+
+    public function move(
+        Request $request,
+        int $id
+    ): JsonResponse {
+        $user = Auth::user();
+
+        if (
+            !in_array(
+                $user->role,
+                ['admin', 'super_admin'],
+                true
+            )
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk memindahkan file.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'group_id' => [
+                'required',
+                'integer',
+                'exists:groups,id',
+            ],
+        ]);
+
+        $groupFile = GroupFile::find($id);
+
+        if (!$groupFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File tidak ditemukan.',
+            ], 404);
+        }
+
+        $targetGroupId = (int) $validated['group_id'];
+        $oldGroupId = (int) $groupFile->group_id;
+
+        if ($targetGroupId === $oldGroupId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File sudah berada pada group tersebut.',
+            ], 422);
+        }
+
+        $oldFilePath = $groupFile->file_path;
+
+        $newFilePath =
+            'group-files/' .
+            $targetGroupId .
+            '/' .
+            $groupFile->file_name;
+
+        if (
+            !Storage::disk('public')->exists(
+                $oldFilePath
+            )
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File fisik tidak ditemukan pada penyimpanan.',
+            ], 404);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $moved = Storage::disk('public')->move(
+                $oldFilePath,
+                $newFilePath
+            );
+
+            if (!$moved) {
+                throw new \RuntimeException(
+                    'File gagal dipindahkan pada penyimpanan.'
+                );
+            }
+
+            $groupFile->update([
+                'group_id' => $targetGroupId,
+                'file_path' => $newFilePath,
+            ]);
+
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'activity' => 'Move File',
+                'description' =>
+                    'Memindahkan file "' .
+                    $groupFile->original_name .
+                    '" dari group-' .
+                    $oldGroupId .
+                    ' ke group-' .
+                    $targetGroupId,
+                'ip_address' => $request->ip(),
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            if (
+                Storage::disk('public')->exists(
+                    $newFilePath
+                ) &&
+                !Storage::disk('public')->exists(
+                    $oldFilePath
+                )
+            ) {
+                Storage::disk('public')->move(
+                    $newFilePath,
+                    $oldFilePath
+                );
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'File gagal dipindahkan.',
+            ], 500);
+        }
+
+        $groupFile->load([
+            'group',
+            'user:id,nama',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File berhasil dipindahkan.',
+            'data' => $groupFile,
+        ]);
     }
 
     public function destroy(

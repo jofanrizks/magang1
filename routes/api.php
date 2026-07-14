@@ -65,6 +65,9 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/dashboard', [UserController::class, 'dashboard']);
         Route::get('/users/{id}/log', [UserController::class, 'logUser']);
         Route::get('/groups/{group}', [GroupController::class, 'show']);
+        Route::post('/admin/group-files', [GroupFileController::class, 'adminStore']);
+        Route::delete('/admin/group-files/{id}', [GroupFileController::class, 'adminDestroy']);
+        Route::patch('/admin/group-files/{id}/move', [GroupFileController::class, 'move']);
 
         Route::post('/banner', [BannerController::class, 'store']);
         Route::delete('/banner/{id}', [BannerController::class, 'destroy']);
