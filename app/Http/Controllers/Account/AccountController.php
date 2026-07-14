@@ -311,7 +311,8 @@ class AccountController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Password berhasil diperbarui'
+            'message' => 'Password berhasil diperbarui',
+            'data' => $user->fresh()->load('group'),
         ]);
     }
 }

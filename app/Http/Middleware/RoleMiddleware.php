@@ -18,6 +18,14 @@ class RoleMiddleware
             ], 403);
         }
 
+        if ($user->must_change_password) {
+            return response()->json([
+                'success' => false,
+                'code' => 'MUST_CHANGE_PASSWORD',
+                'message' => 'Anda wajib mengganti password sebelum mengakses fitur ini.'
+            ], 403);
+        }
+
         return $next($request);
     }
 }

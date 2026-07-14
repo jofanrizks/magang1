@@ -123,6 +123,23 @@ class LoginController extends Controller
             ], 403);
         }
 
+        if ($user->approval === 'approved' && $user->sts === 'pending') {
+            $this->logActivity(
+                $user,
+                'Failed Login',
+                'Login ditolak karena akun belum aktivasi OTP',
+                $request->ip()
+            );
+
+            auth()->logout();
+
+            return response()->json([
+                'success' => false,
+                'code' => 'ACCOUNT_NOT_ACTIVATED',
+                'message' => 'Akun sudah disetujui. Silakan aktivasi akun menggunakan OTP yang dikirim ke WhatsApp.'
+            ], 403);
+        }
+
         if ($user->sts != 'aktif') {
 
             $this->logActivity(

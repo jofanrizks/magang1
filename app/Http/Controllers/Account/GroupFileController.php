@@ -182,6 +182,86 @@ class GroupFileController extends Controller
         ], 201);
     }
 
+    public function adminStore(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (
+            !in_array(
+                $user->role,
+                ['admin', 'super_admin'],
+                true
+            )
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk mengunggah file admin.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'group_id' => [
+                'required',
+                'integer',
+                'exists:groups,id',
+            ],
+            'file' => 'required|file|max:10240',
+        ]);
+
+        $uploadedFile = $request->file('file');
+        $extension = $uploadedFile->getClientOriginalExtension();
+        $fileName = Str::uuid()->toString();
+
+        if ($extension !== '') {
+            $fileName .= '.' . $extension;
+        }
+
+        $filePath = $uploadedFile->storeAs(
+            'group-files/' . $validated['group_id'],
+            $fileName,
+            'public'
+        );
+
+        try {
+            $groupFile = GroupFile::create([
+                'user_id' => $user->id,
+                'group_id' => $validated['group_id'],
+                'original_name' => $uploadedFile->getClientOriginalName(),
+                'file_name' => $fileName,
+                'file_path' => $filePath,
+                'file_size' => $uploadedFile->getSize(),
+                'mime_type' => $uploadedFile->getMimeType(),
+            ]);
+
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'actor_id' => $user->id,
+                'activity' => 'Admin Upload File',
+                'description' =>
+                    'Mengunggah file "' .
+                    $groupFile->original_name .
+                    '" ke group-' .
+                    $validated['group_id'],
+                'ip_address' => $request->ip(),
+            ]);
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($filePath);
+
+            throw $exception;
+        }
+
+        $groupFile->load([
+            'group',
+            'user:id,nama',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File berhasil diunggah oleh admin',
+            'data' => $groupFile,
+        ], 201);
+    }
+
     public function move(
         Request $request,
         int $id
@@ -267,10 +347,14 @@ class GroupFileController extends Controller
             ]);
 
             ActivityLog::create([
-                'user_id' => $user->id,
+                'user_id' => $groupFile->user_id,
+                'actor_id' => $user->id,
                 'activity' => 'Move File',
                 'description' =>
-                    'Memindahkan file "' .
+                    $user->role .
+                    ' ' .
+                    $user->nama .
+                    ' memindahkan file "' .
                     $groupFile->original_name .
                     '" dari group-' .
                     $oldGroupId .
@@ -369,6 +453,60 @@ class GroupFileController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'File berhasil dihapus',
+        ]);
+    }
+
+    public function adminDestroy(
+        Request $request,
+        int $id
+    ): JsonResponse {
+        $user = Auth::user();
+
+        if (
+            !in_array(
+                $user->role,
+                ['admin', 'super_admin'],
+                true
+            )
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk menghapus file admin.',
+            ], 403);
+        }
+
+        $groupFile = GroupFile::find($id);
+
+        if (!$groupFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File tidak ditemukan.',
+            ], 404);
+        }
+
+        $originalName = $groupFile->original_name;
+        $filePath = $groupFile->file_path;
+        $oldGroupId = $groupFile->group_id;
+
+        Storage::disk('public')->delete($filePath);
+
+        $groupFile->delete();
+
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'actor_id' => $user->id,
+            'activity' => 'Admin Delete File',
+            'description' =>
+                'Menghapus file "' .
+                $originalName .
+                '" dari group-' .
+                $oldGroupId,
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File berhasil dihapus oleh admin',
         ]);
     }
 }

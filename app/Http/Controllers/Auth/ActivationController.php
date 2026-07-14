@@ -32,6 +32,13 @@ class ActivationController extends Controller
             ], 400);
         }
 
+        if ($user->approval !== 'approved' || $user->sts !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun belum siap untuk aktivasi OTP'
+            ], 400);
+        }
+
         $valid = $otpService->verify(
             $user->id,
             $request->otp,

@@ -32,14 +32,23 @@ class UserController extends Controller
     }
 
     public function sendOtp(
+        Request $request,
         $id,
         OtpService $otpService,
         WhatsappService $whatsappService
     ) {
         $user = User::findOrFail($id);
+        $actor = auth()->user();
 
-        if (!$this->canManageTarget(auth()->user(), $user)) {
+        if (!$this->canManageTarget($actor, $user)) {
             return $this->forbiddenResponse();
+        }
+
+        if ($user->approval !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'User sudah diproses sebelumnya'
+            ], 422);
         }
 
         $otp = $otpService->generate(
@@ -61,9 +70,27 @@ class UserController extends Controller
             ], 502);
         }
 
+        DB::transaction(function () use ($user, $request, $actor) {
+            $user->update([
+                'approval' => 'approved',
+                'sts' => 'pending',
+                'tglapproval' => now(),
+                'rejection_reason' => null,
+            ]);
+
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'actor_id' => $actor->id,
+                'activity' => 'User Approved',
+                'description' => "User disetujui oleh {$actor->role} dan OTP aktivasi dikirim",
+                'ip_address' => $request->ip(),
+            ]);
+        });
+
         return response()->json([
             'success' => true,
-            'message' => 'OTP berhasil dikirim'
+            'message' => 'User berhasil disetujui dan OTP aktivasi dikirim',
+            'data' => $user->fresh()->load('group'),
         ]);
     }
 
@@ -177,6 +204,9 @@ class UserController extends Controller
         $data['password'] = Hash::make($data['password']);
         $data['must_change_password'] = true;
         $data['tgldaftar'] = now();
+        $data['tglapproval'] = ($data['approval'] ?? null) === 'approved'
+            ? now()
+            : null;
 
         $user = DB::transaction(function () use ($data, $request, $actor) {
             $user = User::create($data);
@@ -350,7 +380,7 @@ class UserController extends Controller
             ]);
         });
 
-        $this->sendManualDisableNotification($user->fresh(), $actor, $whatsappService);
+        $this->sendManualDisableNotification($user->fresh(), $actor, $whatsappService, $request->ip());
 
         return response()->json([
             'success' => true,
@@ -358,7 +388,7 @@ class UserController extends Controller
         ]);
     }
 
-    public function enableUser($id)
+    public function enableUser(Request $request, $id)
     {
         $user = User::find($id);
 
@@ -375,17 +405,21 @@ class UserController extends Controller
             return $this->forbiddenResponse();
         }
 
-        $user->update([
-            'sts' => 'aktif',
-            'tgldisabled' => null
-        ]);
+        DB::transaction(function () use ($user, $request, $actor) {
+            $user->update([
+                'sts' => 'aktif',
+                'login_attempt' => 0,
+                'tgldisabled' => null
+            ]);
 
-        ActivityLog::create([
-            'user_id' => $user->id,
-            'actor_id' => $actor->id,
-            'activity' => 'Account Enabled',
-            'description' => 'Akun diaktifkan kembali oleh admin'
-        ]);
+            ActivityLog::create([
+                'user_id' => $user->id,
+                'actor_id' => $actor->id,
+                'activity' => 'Account Enabled',
+                'description' => "Akun diaktifkan kembali oleh {$actor->role}",
+                'ip_address' => $request->ip(),
+            ]);
+        });
 
         return response()->json([
             'success' => true,
@@ -452,6 +486,10 @@ class UserController extends Controller
             ->where('sts', 'aktif')
             ->count();
 
+        $disabled = User::whereIn('role', $roles)
+            ->where('sts', 'disabled')
+            ->count();
+
         $pending = User::whereIn('role', $roles)
             ->where('approval', 'pending')
             ->count();
@@ -482,6 +520,7 @@ class UserController extends Controller
                 'summary' => [
                     'total_user' => $totalUser,
                     'aktif' => $aktif,
+                    'disabled' => $disabled,
                     'pending' => $pending,
                     'rejected' => $rejected,
                 ],
@@ -655,7 +694,12 @@ class UserController extends Controller
         }
     }
 
-    private function sendManualDisableNotification(User $user, User $actor, WhatsappService $whatsappService): void
+    private function sendManualDisableNotification(
+        User $user,
+        User $actor,
+        WhatsappService $whatsappService,
+        ?string $ipAddress
+    ): void
     {
         $actorName = $actor->role === 'super_admin'
             ? 'Super Admin'
@@ -664,6 +708,7 @@ class UserController extends Controller
         $message = "Halo, {$user->nama}.\n\n"
             . "Akun Anda telah dinonaktifkan oleh administrator.\n\n"
             . 'Tanggal: ' . now()->format('d-m-Y H:i') . "\n"
+            . 'Alamat IP admin: ' . ($ipAddress ?? '-') . "\n"
             . "Dilakukan oleh: {$actorName}\n\n"
             . 'Silakan hubungi administrator apabila Anda membutuhkan informasi lebih lanjut.';
 
@@ -674,12 +719,14 @@ class UserController extends Controller
                 Log::warning('Failed to send manual-disable WhatsApp notification.', [
                     'user_id' => $user->id,
                     'actor_id' => $actor->id,
+                    'ip_address' => $ipAddress,
                 ]);
             }
         } catch (\Throwable $exception) {
             Log::warning('Failed to send manual-disable WhatsApp notification.', [
                 'user_id' => $user->id,
                 'actor_id' => $actor->id,
+                'ip_address' => $ipAddress,
                 'error' => $exception->getMessage(),
             ]);
         }
