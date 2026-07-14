@@ -5,15 +5,17 @@ namespace App\Http\Controllers\Account;
 use App\Http\Controllers\Controller;
 use App\Http\Request\UploadGroupFileRequest;
 use App\Models\ActivityLog;
+use App\Models\Group;
 use App\Models\GroupFile;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class GroupFileController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
 
@@ -25,29 +27,94 @@ class GroupFileController extends Controller
         }
 
         $query = GroupFile::with([
-                'group',
-                'user:id,nama',
-            ]);
+            'group',
+            'user:id,nama',
+        ]);
+
+        $group = null;
 
         if ($user->role === 'user') {
-            $query->where('group_id', $user->group_id);
+            $query->where(
+                'group_id',
+                $user->group_id
+            );
+
+            $group = $user->group;
         }
 
-        $files = $query->latest()->paginate(10);
+
+
+        if ($user->role === 'viewer') {
+            $validated = $request->validate([
+                'group_id' => [
+                    'required',
+                    'integer',
+                    'exists:groups,id',
+                ],
+            ]);
+
+            $query->where(
+                'group_id',
+                $validated['group_id']
+            );
+
+            $group = Group::find(
+                $validated['group_id']
+            );
+        }
+
+
+        if (
+            in_array(
+                $user->role,
+                ['admin', 'super_admin'],
+                true
+            )
+        ) {
+            if ($request->filled('group_id')) {
+                $validated = $request->validate([
+                    'group_id' => [
+                        'integer',
+                        'exists:groups,id',
+                    ],
+                ]);
+
+                $query->where(
+                    'group_id',
+                    $validated['group_id']
+                );
+
+                $group = Group::find(
+                    $validated['group_id']
+                );
+            }
+        }
+
+        $files = $query
+            ->latest()
+            ->paginate(10);
 
         return response()->json([
             'success' => true,
             'message' => 'Data file group berhasil diambil',
             'data' => [
-                'group' => $user->role === 'user' ? $user->group : null,
+                'group' => $group,
                 'files' => $files,
             ],
         ]);
     }
 
-    public function store(UploadGroupFileRequest $request): JsonResponse
-    {
+    public function store(
+        UploadGroupFileRequest $request
+    ): JsonResponse {
         $user = Auth::user();
+
+        if ($user->role !== 'user') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya User yang dapat mengunggah file.',
+            ], 403);
+        }
 
         if (!$user->group_id) {
             return response()->json([
@@ -58,7 +125,8 @@ class GroupFileController extends Controller
 
         $uploadedFile = $request->file('file');
 
-        $extension = $uploadedFile->getClientOriginalExtension();
+        $extension =
+            $uploadedFile->getClientOriginalExtension();
 
         $fileName = Str::uuid()->toString();
 
@@ -76,7 +144,8 @@ class GroupFileController extends Controller
             $groupFile = GroupFile::create([
                 'user_id' => $user->id,
                 'group_id' => $user->group_id,
-                'original_name' => $uploadedFile->getClientOriginalName(),
+                'original_name' =>
+                    $uploadedFile->getClientOriginalName(),
                 'file_name' => $fileName,
                 'file_path' => $filePath,
                 'file_size' => $uploadedFile->getSize(),
@@ -86,16 +155,24 @@ class GroupFileController extends Controller
             ActivityLog::create([
                 'user_id' => $user->id,
                 'activity' => 'Upload File',
-                'description' => 'Mengunggah file "' . $groupFile->original_name . '"',
+                'description' =>
+                    'Mengunggah file "' .
+                    $groupFile->original_name .
+                    '"',
                 'ip_address' => $request->ip(),
             ]);
         } catch (\Throwable $exception) {
-            Storage::disk('public')->delete($filePath);
+            Storage::disk('public')->delete(
+                $filePath
+            );
 
             throw $exception;
         }
 
-        $groupFile->load('group');
+        $groupFile->load([
+            'group',
+            'user:id,nama',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -104,12 +181,26 @@ class GroupFileController extends Controller
         ], 201);
     }
 
-    public function destroy(int $id): JsonResponse
-    {
+    public function destroy(
+        int $id
+    ): JsonResponse {
         $user = Auth::user();
 
-        $groupFile = GroupFile::where('id', $id)
-            ->where('user_id', $user->id)
+        if ($user->role !== 'user') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya User yang dapat menghapus file.',
+            ], 403);
+        }
+
+        $groupFile = GroupFile::where(
+                'id',
+                $id
+            )
+            ->where(
+                'user_id',
+                $user->id
+            )
             ->first();
 
         if (!$groupFile) {
@@ -119,16 +210,25 @@ class GroupFileController extends Controller
             ], 404);
         }
 
-        $originalName = $groupFile->original_name;
-        $filePath = $groupFile->file_path;
+        $originalName =
+            $groupFile->original_name;
 
-        Storage::disk('public')->delete($filePath);
+        $filePath =
+            $groupFile->file_path;
+
+        Storage::disk('public')->delete(
+            $filePath
+        );
+
         $groupFile->delete();
 
         ActivityLog::create([
             'user_id' => $user->id,
             'activity' => 'Delete File',
-            'description' => 'Menghapus file "' . $originalName . '"',
+            'description' =>
+                'Menghapus file "' .
+                $originalName .
+                '"',
             'ip_address' => request()->ip(),
         ]);
 

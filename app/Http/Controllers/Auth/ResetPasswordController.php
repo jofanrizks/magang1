@@ -60,6 +60,7 @@ class ResetPasswordController extends Controller
         OtpService $otpService
     )
     {
+        
         $request->validate([
             'nik' => 'required',
             'otp' => 'required|digits:6',
@@ -94,7 +95,8 @@ class ResetPasswordController extends Controller
         $user->update([
             'password' => Hash::make(
                 $request->password
-            )
+            ),
+            'must_change_password' => false,
         ]);
 
         ActivityLog::create([
