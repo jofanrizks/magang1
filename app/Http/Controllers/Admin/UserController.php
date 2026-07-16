@@ -406,27 +406,49 @@ class UserController extends Controller
         }
 
         DB::transaction(function () use ($user, $request, $actor) {
+            $isRejected = $user->approval === 'rejected';
+
             $user->update([
-                'sts' => 'aktif',
+                // Kalau sebelumnya ditolak, kembalikan ke proses approval.
+                'approval' => $isRejected ? 'pending' : $user->approval,
+                'sts' => $isRejected ? 'pending' : 'aktif',
+
+                'rejection_reason' => $isRejected
+                    ? null
+                    : $user->rejection_reason,
+
+                'tglapproval' => $isRejected
+                    ? null
+                    : $user->tglapproval,
+
                 'login_attempt' => 0,
-                'tgldisabled' => null
+                'tgldisabled' => null,
+                'tglupdate' => now(),
             ]);
 
             ActivityLog::create([
                 'user_id' => $user->id,
                 'actor_id' => $actor->id,
-                'activity' => 'Account Enabled',
-                'description' => "Akun diaktifkan kembali oleh {$actor->role}",
+                'activity' => $isRejected
+                    ? 'Rejected User Reopened'
+                    : 'Account Enabled',
+                'description' => $isRejected
+                    ? "Pengajuan user dibuka kembali oleh {$actor->role}"
+                    : "Akun diaktifkan kembali oleh {$actor->role}",
                 'ip_address' => $request->ip(),
             ]);
         });
 
+        $user = $user->fresh()->load('group');
+
         return response()->json([
             'success' => true,
-            'message' => 'User berhasil diaktifkan'
+            'message' => $user->approval === 'pending'
+                ? 'Pengajuan user berhasil dibuka kembali dan menunggu persetujuan.'
+                : 'User berhasil diaktifkan.',
+            'data' => $user,
         ]);
     }
-
     public function destroy(Request $request, $id)
     {
         $user = User::find($id);
