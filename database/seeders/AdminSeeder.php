@@ -29,7 +29,6 @@ class AdminSeeder extends Seeder
 
         $user->update([
             'role' => 'super_admin',
-            'group_id' => null,
             'nama' => 'Super Admin',
             'instansi' => 'System',
             'jabatan' => 'Administrator',

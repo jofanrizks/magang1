@@ -16,7 +16,6 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'role',
-        'group_id',
         'nik',
         'nama',
         'instansi',
@@ -89,9 +88,10 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(ActivityLog::class, 'actor_id');
     }
-   public function group()
+    public function groups()
     {
-        return $this->belongsTo(Group::class);
+        return $this->belongsToMany(Group::class, 'group_user')
+            ->withTimestamps();
     }
 
     public function groupFiles()

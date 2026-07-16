@@ -173,7 +173,7 @@ class LoginController extends Controller
             'message' => 'Login berhasil',
             'data' => [
                 'token' => $token,
-                'user' => $user->load('group'),
+                'user' => $user->load('groups:id,name'),
             ],
         ]);
     }
@@ -205,7 +205,7 @@ class LoginController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => auth()->user()->load('group'),
+            'data' => auth()->user()->load('groups:id,name'),
         ]);
     }
 

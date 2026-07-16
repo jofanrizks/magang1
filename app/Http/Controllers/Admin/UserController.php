@@ -21,6 +21,7 @@ class UserController extends Controller
     public function pendingUsers()
     {
         $users = $this->visibleUsers()
+            ->with('groups:id,name')
             ->where('approval', 'pending')
             ->select($this->userListFields())
             ->paginate(25);
@@ -90,7 +91,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User berhasil disetujui dan OTP aktivasi dikirim',
-            'data' => $user->fresh()->load('group'),
+            'data' => $user->fresh()->load('groups:id,name'),
         ]);
     }
 
@@ -169,6 +170,7 @@ class UserController extends Controller
     public function getAllUsers()
     {
         $users = $this->visibleUsers()
+            ->with('groups:id,name')
             ->select($this->userListFields())
             ->paginate(25);
 
@@ -181,6 +183,7 @@ class UserController extends Controller
     public function getApprovedUsers()
     {
         $users = $this->visibleUsers()
+            ->with('groups:id,name')
             ->where('approval', 'approved')
             ->select($this->userListFields())
             ->paginate(25);
@@ -200,7 +203,11 @@ class UserController extends Controller
             return $this->forbiddenResponse();
         }
 
-        $data = $this->normalizeGroup($data);
+        $this->requireGroupsForRole($data, $data['role']);
+
+        $groupIds = $data['group_ids'] ?? null;
+        unset($data['group_ids']);
+
         $data['password'] = Hash::make($data['password']);
         $data['must_change_password'] = true;
         $data['tgldaftar'] = now();
@@ -208,8 +215,10 @@ class UserController extends Controller
             ? now()
             : null;
 
-        $user = DB::transaction(function () use ($data, $request, $actor) {
+        $user = DB::transaction(function () use ($data, $groupIds, $request, $actor) {
             $user = User::create($data);
+
+            $this->syncUserGroups($user, $data['role'], $groupIds);
 
             ActivityLog::create([
                 'user_id' => $user->id,
@@ -225,13 +234,13 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User berhasil dibuat',
-            'data' => $user->load('group')
+            'data' => $user->load('groups:id,name')
         ], 201);
     }
 
     public function show($id)
     {
-        $user = User::with('group')->find($id);
+        $user = User::with('groups:id,name')->find($id);
 
         if (!$user) {
             return response()->json([
@@ -276,7 +285,11 @@ class UserController extends Controller
             return $this->forbiddenResponse();
         }
 
-        $data = $this->normalizeGroup($data, $targetRole, $user);
+        $this->requireGroupsForRole($data, $targetRole);
+
+        $groupIds = $data['group_ids'] ?? null;
+        unset($data['group_ids']);
+
         $data['tglupdate'] = now();
 
         if (
@@ -287,8 +300,9 @@ class UserController extends Controller
             $data['rejection_reason'] = null;
         }
 
-        DB::transaction(function () use ($user, $data, $request, $actor) {
+        DB::transaction(function () use ($user, $data, $groupIds, $targetRole, $request, $actor) {
             $user->update($data);
+            $this->syncUserGroups($user, $targetRole, $groupIds);
 
             ActivityLog::create([
                 'user_id' => $user->id,
@@ -302,7 +316,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User berhasil diperbarui',
-            'data' => $user->fresh()->load('group')
+            'data' => $user->fresh()->load('groups:id,name')
         ]);
     }
 
@@ -439,7 +453,7 @@ class UserController extends Controller
             ]);
         });
 
-        $user = $user->fresh()->load('group');
+        $user = $user->fresh()->load('groups:id,name');
 
         return response()->json([
             'success' => true,
@@ -587,7 +601,8 @@ class UserController extends Controller
 
         return $request->validate([
             'role' => [$isCreate ? 'required' : 'sometimes', Rule::in(['admin', 'user', 'viewer'])],
-            'group_id' => 'nullable|exists:groups,id',
+            'group_ids' => ['nullable', 'array', 'min:1'],
+            'group_ids.*' => ['integer', 'distinct', 'exists:groups,id'],
             'nik' => [$isCreate ? 'required' : 'sometimes', $uniqueNik],
             'nama' => $isCreate ? 'required' : 'sometimes',
             'instansi' => $isCreate ? 'required' : 'sometimes',
@@ -599,25 +614,25 @@ class UserController extends Controller
         ]);
     }
 
-    private function normalizeGroup(array $data, ?string $role = null, ?User $user = null): array
+    private function syncUserGroups(User $user, string $role, ?array $groupIds): void
     {
-        $role = $role ?? $data['role'];
-
         if ($role === 'user') {
-            if (!array_key_exists('group_id', $data) && $user && $user->group_id) {
-                return $data;
-            }
-
-            validator($data, [
-                'group_id' => 'required|exists:groups,id',
-            ])->validate();
-
-            return $data;
+            $user->groups()->sync($groupIds ?? []);
+            return;
         }
 
-        $data['group_id'] = null;
+        $user->groups()->detach();
+    }
 
-        return $data;
+    private function requireGroupsForRole(array $data, string $role): void
+    {
+        if ($role !== 'user' || array_key_exists('group_ids', $data)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'group_ids' => 'Group wajib dipilih untuk role user.',
+        ]);
     }
 
     private function visibleUsers()
@@ -767,7 +782,6 @@ class UserController extends Controller
         return [
             'id',
             'role',
-            'group_id',
             'nik',
             'nama',
             'instansi',

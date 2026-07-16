@@ -3,14 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\Group;
+use Illuminate\Support\Facades\Auth;
 
 class GroupController extends Controller
 {
     public function index()
     {
+        $user = Auth::user();
+
+        $groups = $user && $user->role === 'user'
+            ? $user->groups()
+                ->select('groups.id', 'groups.name')
+                ->get()
+            : Group::query()
+                ->select('id', 'name')
+                ->get();
+
         return response()->json([
             'success' => true,
-            'data' => Group::all()
+            'data' => $groups
         ]);
     }
 
@@ -19,8 +30,7 @@ class GroupController extends Controller
         $group->setRelation(
             'users',
             $group->users()->get([
-                'id',
-                'group_id',
+                'users.id',
                 'nik',
                 'nama',
                 'instansi',

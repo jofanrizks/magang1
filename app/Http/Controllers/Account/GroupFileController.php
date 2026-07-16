@@ -20,13 +20,6 @@ class GroupFileController extends Controller
     {
         $user = Auth::user();
 
-        if ($user->role === 'user' && !$user->group_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User belum memiliki group.',
-            ], 422);
-        }
-
         $query = GroupFile::with([
             'group',
             'user:id,nama',
@@ -35,15 +28,43 @@ class GroupFileController extends Controller
         $group = null;
 
         if ($user->role === 'user') {
-            $query->where(
-                'group_id',
-                $user->group_id
-            );
+            $groupIds = $user->groups()
+                ->pluck('groups.id');
 
-            $group = $user->group;
+            if ($groupIds->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User belum memiliki group.',
+                ], 422);
+            }
+
+            if ($request->filled('group_id')) {
+                $validated = $request->validate([
+                    'group_id' => [
+                        'integer',
+                        'exists:groups,id',
+                    ],
+                ]);
+
+                if (!$groupIds->contains((int) $validated['group_id'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Anda tidak memiliki akses ke group ini.',
+                    ], 403);
+                }
+
+                $query->where(
+                    'group_id',
+                    $validated['group_id']
+                );
+
+                $group = Group::find(
+                    $validated['group_id']
+                );
+            } else {
+                $query->whereIn('group_id', $groupIds);
+            }
         }
-
-
 
         if ($user->role === 'viewer') {
             $validated = $request->validate([
@@ -117,11 +138,18 @@ class GroupFileController extends Controller
             ], 403);
         }
 
-        if (!$user->group_id) {
+        $validated = $request->validated();
+        $targetGroupId = (int) $validated['group_id'];
+
+        $hasAccess = $user->groups()
+            ->where('groups.id', $targetGroupId)
+            ->exists();
+
+        if (!$hasAccess) {
             return response()->json([
                 'success' => false,
-                'message' => 'User belum memiliki group.',
-            ], 422);
+                'message' => 'Anda tidak memiliki akses untuk mengunggah file ke group ini.',
+            ], 403);
         }
 
         $uploadedFile = $request->file('file');
@@ -136,7 +164,7 @@ class GroupFileController extends Controller
         }
 
         $filePath = $uploadedFile->storeAs(
-            'group-files/' . $user->group_id,
+            'group-files/' . $targetGroupId,
             $fileName,
             'public'
         );
@@ -144,7 +172,7 @@ class GroupFileController extends Controller
         try {
             $groupFile = GroupFile::create([
                 'user_id' => $user->id,
-                'group_id' => $user->group_id,
+                'group_id' => $targetGroupId,
                 'original_name' =>
                     $uploadedFile->getClientOriginalName(),
                 'file_name' => $fileName,

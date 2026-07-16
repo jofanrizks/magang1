@@ -7,36 +7,41 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Models\ActivityLog;
+use Illuminate\Support\Facades\DB;
 
 class RegisterController extends Controller
 {
     public function register(Request $request)
     {
-        $request->validate([
-            'nik' => 'required|unique:users,nik',
-            'nama' => 'required',
-            'instansi' => 'required',
-            'jabatan' => 'required',
-            'telp' => 'required|unique:users,telp',
-            'group_id' => 'required|exists:groups,id',
-            'password' => 'required|min:6|confirmed',
+        $validated = $request->validate([
+            'nik' => ['required', 'unique:users,nik'],
+            'nama' => ['required'],
+            'instansi' => ['required'],
+            'jabatan' => ['required'],
+            'telp' => ['required', 'unique:users,telp'],
+            'group_ids' => ['required', 'array', 'min:1'],
+            'group_ids.*' => ['integer', 'distinct', 'exists:groups,id'],
+            'password' => ['required', 'min:6', 'confirmed'],
         ]);
-        $user = new User();
 
-            $user->role = 'user';
-            $user->nik = $request->nik;
-            $user->nama = $request->nama;
-            $user->instansi = $request->instansi;
-            $user->jabatan = $request->jabatan;
-            $user->telp = $request->telp;
-            $user->group_id = $request->group_id;
-            $user->password = Hash::make($request->password);
-            $user->sts = 'pending';
-            $user->approval = 'pending';
-            $user->tgldaftar = now();
+        $groupIds = $validated['group_ids'];
+        unset($validated['group_ids']);
 
-            $user->save();
-            $user->load('group');
+        $user = DB::transaction(function () use ($validated, $groupIds, $request) {
+            $user = User::create([
+                'role' => 'user',
+                'nik' => $validated['nik'],
+                'nama' => $validated['nama'],
+                'instansi' => $validated['instansi'],
+                'jabatan' => $validated['jabatan'],
+                'telp' => $validated['telp'],
+                'password' => Hash::make($validated['password']),
+                'sts' => 'pending',
+                'approval' => 'pending',
+                'tgldaftar' => now(),
+            ]);
+
+            $user->groups()->sync($groupIds);
 
             ActivityLog::create([
                 'user_id' => $user->id,
@@ -44,10 +49,14 @@ class RegisterController extends Controller
                 'description' => 'Registrasi akun',
                 'ip_address' => $request->ip(),
             ]);
+
+            return $user;
+        });
+
         return response()->json([
             'success' => true,
             'message' => 'Registrasi berhasil, menunggu approval admin',
-            'data' => $user
+            'data' => $user->load('groups:id,name')
         ], 201);
     }
     
