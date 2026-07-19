@@ -9,6 +9,7 @@ use App\Services\WhatsappService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Models\ActivityLog;
+use App\Support\ActivityLogContext;
 
 class ResetPasswordController extends Controller
 {
@@ -103,7 +104,7 @@ class ResetPasswordController extends Controller
             'user_id' => $user->id,
             'activity' => 'Reset Password',
             'description' => 'User reset password via OTP',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([

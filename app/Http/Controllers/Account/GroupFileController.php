@@ -7,6 +7,8 @@ use App\Http\Request\UploadGroupFileRequest;
 use App\Models\ActivityLog;
 use App\Models\Group;
 use App\Models\GroupFile;
+use App\Models\ServiceOption;
+use App\Support\ActivityLogContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,9 +25,38 @@ class GroupFileController extends Controller
         $query = GroupFile::with([
             'group',
             'user:id,nama',
+            'serviceOption:id,service_id,name',
+            'serviceOption.service:id,group_id,code,name',
         ]);
 
         $group = null;
+        $validatedFilters = $request->validate([
+            'group_id' => [
+                'nullable',
+                'integer',
+                'exists:groups,id',
+            ],
+            'service_option_id' => [
+                'nullable',
+                'integer',
+                'exists:service_options,id',
+            ],
+        ]);
+
+        $requestedGroupId = $validatedFilters['group_id'] ?? null;
+        $requestedOptionId = $validatedFilters['service_option_id'] ?? null;
+
+        $option = $requestedOptionId
+            ? $this->findServiceOption((int) $requestedOptionId)
+            : null;
+
+        if (
+            $option &&
+            $requestedGroupId &&
+            (int) $option->service?->group_id !== (int) $requestedGroupId
+        ) {
+            return $this->optionGroupMismatchResponse();
+        }
 
         if ($user->role === 'user') {
             $groupIds = $user->groups()
@@ -38,15 +69,9 @@ class GroupFileController extends Controller
                 ], 422);
             }
 
-            if ($request->filled('group_id')) {
-                $validated = $request->validate([
-                    'group_id' => [
-                        'integer',
-                        'exists:groups,id',
-                    ],
-                ]);
+            if ($requestedGroupId) {
 
-                if (!$groupIds->contains((int) $validated['group_id'])) {
+                if (!$groupIds->contains((int) $requestedGroupId)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Anda tidak memiliki akses ke group ini.',
@@ -55,11 +80,11 @@ class GroupFileController extends Controller
 
                 $query->where(
                     'group_id',
-                    $validated['group_id']
+                    $requestedGroupId
                 );
 
                 $group = Group::find(
-                    $validated['group_id']
+                    $requestedGroupId
                 );
             } else {
                 $query->whereIn('group_id', $groupIds);
@@ -67,21 +92,20 @@ class GroupFileController extends Controller
         }
 
         if ($user->role === 'viewer') {
-            $validated = $request->validate([
-                'group_id' => [
-                    'required',
-                    'integer',
-                    'exists:groups,id',
-                ],
-            ]);
+            if (!$requestedGroupId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Group tujuan wajib dipilih.',
+                ], 422);
+            }
 
             $query->where(
                 'group_id',
-                $validated['group_id']
+                $requestedGroupId
             );
 
             $group = Group::find(
-                $validated['group_id']
+                $requestedGroupId
             );
         }
 
@@ -93,23 +117,24 @@ class GroupFileController extends Controller
                 true
             )
         ) {
-            if ($request->filled('group_id')) {
-                $validated = $request->validate([
-                    'group_id' => [
-                        'integer',
-                        'exists:groups,id',
-                    ],
-                ]);
+            if ($requestedGroupId) {
 
                 $query->where(
                     'group_id',
-                    $validated['group_id']
+                    $requestedGroupId
                 );
 
                 $group = Group::find(
-                    $validated['group_id']
+                    $requestedGroupId
                 );
             }
+        }
+
+        if ($option) {
+            $query->where(
+                'service_option_id',
+                $option->id
+            );
         }
 
         $files = $query
@@ -140,6 +165,23 @@ class GroupFileController extends Controller
 
         $validated = $request->validated();
         $targetGroupId = (int) $validated['group_id'];
+        $option = $this->findServiceOption(
+            (int) $validated['service_option_id']
+        );
+
+        if (!$this->optionMatchesGroup($option, $targetGroupId)) {
+            return $this->optionGroupMismatchResponse();
+        }
+
+        if (
+            !$option->is_active ||
+            !$option->service?->is_active
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Opsi layanan tidak aktif.',
+            ], 403);
+        }
 
         $hasAccess = $user->groups()
             ->where('groups.id', $targetGroupId)
@@ -173,6 +215,7 @@ class GroupFileController extends Controller
             $groupFile = GroupFile::create([
                 'user_id' => $user->id,
                 'group_id' => $targetGroupId,
+                'service_option_id' => $option->id,
                 'original_name' =>
                     $uploadedFile->getClientOriginalName(),
                 'file_name' => $fileName,
@@ -187,8 +230,9 @@ class GroupFileController extends Controller
                 'description' =>
                     'Mengunggah file "' .
                     $groupFile->original_name .
-                    '"',
-                'ip_address' => $request->ip(),
+                    '" pada opsi ' .
+                    $option->name,
+                ...ActivityLogContext::fromRequest($request),
             ]);
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete(
@@ -201,6 +245,8 @@ class GroupFileController extends Controller
         $groupFile->load([
             'group',
             'user:id,nama',
+            'serviceOption:id,service_id,name',
+            'serviceOption.service:id,group_id,code,name',
         ]);
 
         return response()->json([
@@ -233,8 +279,21 @@ class GroupFileController extends Controller
                 'integer',
                 'exists:groups,id',
             ],
+            'service_option_id' => [
+                'required',
+                'integer',
+                'exists:service_options,id',
+            ],
             'file' => 'required|file|max:10240',
         ]);
+
+        $option = $this->findServiceOption(
+            (int) $validated['service_option_id']
+        );
+
+        if (!$this->optionMatchesGroup($option, (int) $validated['group_id'])) {
+            return $this->optionGroupMismatchResponse();
+        }
 
         $uploadedFile = $request->file('file');
         $extension = $uploadedFile->getClientOriginalExtension();
@@ -254,6 +313,7 @@ class GroupFileController extends Controller
             $groupFile = GroupFile::create([
                 'user_id' => $user->id,
                 'group_id' => $validated['group_id'],
+                'service_option_id' => $option->id,
                 'original_name' => $uploadedFile->getClientOriginalName(),
                 'file_name' => $fileName,
                 'file_path' => $filePath,
@@ -269,8 +329,10 @@ class GroupFileController extends Controller
                     'Mengunggah file "' .
                     $groupFile->original_name .
                     '" ke group-' .
-                    $validated['group_id'],
-                'ip_address' => $request->ip(),
+                    $validated['group_id'] .
+                    ' opsi ' .
+                    $option->name,
+                ...ActivityLogContext::fromRequest($request),
             ]);
         } catch (\Throwable $exception) {
             Storage::disk('public')->delete($filePath);
@@ -281,6 +343,8 @@ class GroupFileController extends Controller
         $groupFile->load([
             'group',
             'user:id,nama',
+            'serviceOption:id,service_id,name',
+            'serviceOption.service:id,group_id,code,name',
         ]);
 
         return response()->json([
@@ -315,7 +379,16 @@ class GroupFileController extends Controller
                 'integer',
                 'exists:groups,id',
             ],
+            'service_option_id' => [
+                'required',
+                'integer',
+                'exists:service_options,id',
+            ],
         ]);
+
+        $option = $this->findServiceOption(
+            (int) $validated['service_option_id']
+        );
 
         $groupFile = GroupFile::find($id);
 
@@ -327,24 +400,35 @@ class GroupFileController extends Controller
         }
 
         $targetGroupId = (int) $validated['group_id'];
+        $targetOptionId = (int) $validated['service_option_id'];
         $oldGroupId = (int) $groupFile->group_id;
+        $oldOptionId = (int) $groupFile->service_option_id;
 
-        if ($targetGroupId === $oldGroupId) {
+        if (!$this->optionMatchesGroup($option, $targetGroupId)) {
+            return $this->optionGroupMismatchResponse();
+        }
+
+        if (
+            $targetGroupId === $oldGroupId &&
+            $targetOptionId === $oldOptionId
+        ) {
             return response()->json([
                 'success' => false,
-                'message' => 'File sudah berada pada group tersebut.',
+                'message' => 'File sudah berada pada layanan dan opsi tersebut.',
             ], 422);
         }
 
         $oldFilePath = $groupFile->file_path;
 
-        $newFilePath =
-            'group-files/' .
-            $targetGroupId .
-            '/' .
-            $groupFile->file_name;
+        $newFilePath = $targetGroupId === $oldGroupId
+            ? $oldFilePath
+            : 'group-files/' .
+                $targetGroupId .
+                '/' .
+                $groupFile->file_name;
 
         if (
+            $targetGroupId !== $oldGroupId &&
             !Storage::disk('public')->exists(
                 $oldFilePath
             )
@@ -358,10 +442,14 @@ class GroupFileController extends Controller
         DB::beginTransaction();
 
         try {
-            $moved = Storage::disk('public')->move(
-                $oldFilePath,
-                $newFilePath
-            );
+            $moved = true;
+
+            if ($targetGroupId !== $oldGroupId) {
+                $moved = Storage::disk('public')->move(
+                    $oldFilePath,
+                    $newFilePath
+                );
+            }
 
             if (!$moved) {
                 throw new \RuntimeException(
@@ -371,6 +459,7 @@ class GroupFileController extends Controller
 
             $groupFile->update([
                 'group_id' => $targetGroupId,
+                'service_option_id' => $targetOptionId,
                 'file_path' => $newFilePath,
             ]);
 
@@ -387,8 +476,10 @@ class GroupFileController extends Controller
                     '" dari group-' .
                     $oldGroupId .
                     ' ke group-' .
-                    $targetGroupId,
-                'ip_address' => $request->ip(),
+                    $targetGroupId .
+                    ' opsi ' .
+                    $option->name,
+                ...ActivityLogContext::fromRequest($request),
             ]);
 
             DB::commit();
@@ -418,6 +509,8 @@ class GroupFileController extends Controller
         $groupFile->load([
             'group',
             'user:id,nama',
+            'serviceOption:id,service_id,name',
+            'serviceOption.service:id,group_id,code,name',
         ]);
 
         return response()->json([
@@ -428,6 +521,7 @@ class GroupFileController extends Controller
     }
 
     public function destroy(
+        Request $request,
         int $id
     ): JsonResponse {
         $user = Auth::user();
@@ -475,7 +569,7 @@ class GroupFileController extends Controller
                 'Menghapus file "' .
                 $originalName .
                 '"',
-            'ip_address' => request()->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([
@@ -529,12 +623,36 @@ class GroupFileController extends Controller
                 $originalName .
                 '" dari group-' .
                 $oldGroupId,
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'File berhasil dihapus oleh admin',
         ]);
+    }
+
+    private function findServiceOption(int $id): ?ServiceOption
+    {
+        return ServiceOption::with([
+            'service:id,group_id,code,name,is_active',
+        ])->find($id);
+    }
+
+    private function optionMatchesGroup(
+        ?ServiceOption $option,
+        int $groupId
+    ): bool {
+        return $option &&
+            $option->service &&
+            (int) $option->service->group_id === $groupId;
+    }
+
+    private function optionGroupMismatchResponse(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Opsi layanan tidak sesuai dengan group tujuan.',
+        ], 422);
     }
 }

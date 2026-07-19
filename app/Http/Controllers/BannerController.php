@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Banner;
 use Illuminate\Http\Request;
 use App\Models\ActivityLog;
+use App\Support\ActivityLogContext;
 use Illuminate\Support\Facades\Storage;
 
 class BannerController extends Controller
@@ -59,7 +60,7 @@ class BannerController extends Controller
             'user_id' => $user->id,
             'activity' => 'Add Banner',
             'description' => "Mengubah {$request->title}",
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([
@@ -81,7 +82,7 @@ class BannerController extends Controller
             'user_id' => $user->id,
             'activity' => 'Delete Banner',
             'description' => 'User menghapus banner',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
         return response()->json([
             'success' => true,

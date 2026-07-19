@@ -23,4 +23,9 @@ class Group extends Model
     {
         return $this->hasMany(GroupFile::class);
     }
+
+    public function services()
+    {
+        return $this->hasMany(ManagedService::class);
+    }
 }

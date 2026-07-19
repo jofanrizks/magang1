@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\ActivityLogContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -150,7 +151,7 @@ class RegisterController extends Controller
                 'description' => $user->role === 'viewer'
                     ? 'Registrasi akun Viewer'
                     : 'Registrasi akun User',
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
 
             return $user;

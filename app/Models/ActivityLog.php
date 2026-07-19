@@ -12,6 +12,10 @@ class ActivityLog extends Model
         'activity',
         'description',
         'ip_address',
+        'browser',
+        'operating_system',
+        'device_type',
+        'user_agent',
     ];
 
     public function user()

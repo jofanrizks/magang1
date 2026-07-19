@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\User;
 use App\Services\OtpService;
 use App\Services\WhatsappService;
+use App\Support\ActivityLogContext;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -18,13 +19,18 @@ use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
-    public function pendingUsers()
+    public function pendingUsers(Request $request)
     {
-        $users = $this->visibleUsers()
+        $filters = $this->validatedListFilters($request);
+
+        $users = $this->applyUserFilters(
+                $this->visibleUsers()
+                    ->where('approval', 'pending'),
+                $filters
+            )
             ->with('groups:id,name')
-            ->where('approval', 'pending')
             ->select($this->userListFields())
-            ->paginate(25);
+            ->paginate($filters['per_page']);
 
         return response()->json([
             'success' => true,
@@ -84,7 +90,7 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'User Approved',
                 'description' => "User disetujui oleh {$actor->role} dan OTP aktivasi dikirim",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
@@ -147,7 +153,7 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'User Rejected',
                 'description' => "Pengajuan ditolak oleh {$this->rejectionActorName($actor)}. Alasan: {$reason}",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
@@ -167,12 +173,17 @@ class UserController extends Controller
         ]);
     }
 
-    public function getAllUsers()
+    public function getAllUsers(Request $request)
     {
-        $users = $this->visibleUsers()
+        $filters = $this->validatedListFilters($request);
+
+        $users = $this->applyUserFilters(
+                $this->visibleUsers(),
+                $filters
+            )
             ->with('groups:id,name')
             ->select($this->userListFields())
-            ->paginate(25);
+            ->paginate($filters['per_page']);
 
         return response()->json([
             'success' => true,
@@ -180,13 +191,18 @@ class UserController extends Controller
         ]);
     }
 
-    public function getApprovedUsers()
+    public function getApprovedUsers(Request $request)
     {
-        $users = $this->visibleUsers()
+        $filters = $this->validatedListFilters($request);
+
+        $users = $this->applyUserFilters(
+                $this->visibleUsers()
+                    ->where('approval', 'approved'),
+                $filters
+            )
             ->with('groups:id,name')
-            ->where('approval', 'approved')
             ->select($this->userListFields())
-            ->paginate(25);
+            ->paginate($filters['per_page']);
 
         return response()->json([
             'success' => true,
@@ -225,7 +241,7 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'Create User',
                 'description' => "Akun {$user->role} dibuat oleh {$actor->role}",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
 
             return $user;
@@ -309,7 +325,7 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'Update User',
                 'description' => "Akun diperbarui oleh {$actor->role}",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
@@ -352,7 +368,7 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'Admin Reset Password',
                 'description' => "Password di-reset oleh {$actor->role}",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
@@ -390,11 +406,11 @@ class UserController extends Controller
                 'actor_id' => $actor->id,
                 'activity' => 'Account Disabled by Administrator',
                 'description' => $this->disableDescription($actor),
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
-        $this->sendManualDisableNotification($user->fresh(), $actor, $whatsappService, $request->ip());
+        $this->sendManualDisableNotification($user->fresh(), $actor, $whatsappService);
 
         return response()->json([
             'success' => true,
@@ -423,7 +439,6 @@ class UserController extends Controller
             $isRejected = $user->approval === 'rejected';
 
             $user->update([
-                // Kalau sebelumnya ditolak, kembalikan ke proses approval.
                 'approval' => $isRejected ? 'pending' : $user->approval,
                 'sts' => $isRejected ? 'pending' : 'aktif',
 
@@ -449,7 +464,7 @@ class UserController extends Controller
                 'description' => $isRejected
                     ? "Pengajuan user dibuka kembali oleh {$actor->role}"
                     : "Akun diaktifkan kembali oleh {$actor->role}",
-                'ip_address' => $request->ip(),
+                ...ActivityLogContext::fromRequest($request),
             ]);
         });
 
@@ -487,7 +502,7 @@ class UserController extends Controller
                     'actor_id' => $actor->id,
                     'activity' => 'Delete User',
                     'description' => "Akun {$user->role} dihapus oleh {$actor->role}",
-                    'ip_address' => $request->ip(),
+                    ...ActivityLogContext::fromRequest($request),
                 ]);
 
                 $user->delete();
@@ -639,11 +654,91 @@ class UserController extends Controller
     {
         $query = User::query();
 
+        if (auth()->user()->role === 'super_admin') {
+            $query->whereIn('role', ['admin', 'user', 'viewer']);
+        }
+
         if (auth()->user()->role === 'admin') {
             $query->whereIn('role', ['user', 'viewer']);
         }
 
         return $query;
+    }
+
+    private function validatedListFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'role' => [
+                'nullable',
+                Rule::in(['super_admin', 'admin', 'user', 'viewer']),
+            ],
+            'group_id' => [
+                'nullable',
+                'integer',
+                'exists:groups,id',
+            ],
+            'sts' => [
+                'nullable',
+                Rule::in(['pending', 'aktif', 'disabled']),
+            ],
+            'approval' => [
+                'nullable',
+                Rule::in(['pending', 'approved', 'rejected']),
+            ],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $validated['per_page'] = (int) ($validated['per_page'] ?? 25);
+
+        return $validated;
+    }
+
+    private function applyUserFilters($query, array $filters)
+    {
+        if (!empty($filters['search'])) {
+            $search = addcslashes($filters['search'], '\%_');
+
+            $query->where(function ($query) use ($search) {
+                $keyword = "%{$search}%";
+
+                $query->where('nama', 'like', $keyword)
+                    ->orWhere('nik', 'like', $keyword)
+                    ->orWhere('telp', 'like', $keyword)
+                    ->orWhere('instansi', 'like', $keyword)
+                    ->orWhere('jabatan', 'like', $keyword);
+            });
+        }
+
+        if (!empty($filters['role'])) {
+            $query->where('role', $filters['role']);
+        }
+
+        if (!empty($filters['group_id'])) {
+            $query->whereHas('groups', function ($query) use ($filters) {
+                $query->where('groups.id', $filters['group_id']);
+            });
+        }
+
+        if (!empty($filters['sts'])) {
+            $query->where('sts', $filters['sts']);
+        }
+
+        if (!empty($filters['approval'])) {
+            $query->where('approval', $filters['approval']);
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('tgldaftar', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('tgldaftar', '<=', $filters['date_to']);
+        }
+
+        return $query->orderByDesc('tgldaftar');
     }
 
     private function canViewTarget(User $actor, User $target): bool
@@ -706,10 +801,14 @@ class UserController extends Controller
             ? 'Super Admin'
             : $actor->nama;
 
+        $waktuWib = now()
+            ->timezone('Asia/Jakarta')
+            ->format('d-m-Y H:i');
+
         $message = "Halo, {$user->nama}.\n\n"
             . "Pengajuan akun Anda telah ditolak.\n\n"
             . "Alasan penolakan:\n{$reason}\n\n"
-            . 'Tanggal: ' . now()->format('d-m-Y H:i') . "\n"
+            . "Tanggal: {$waktuWib} WIB\n"
             . "Diproses oleh: {$actorName}\n\n"
             . 'Silakan perbaiki data atau hubungi administrator apabila membutuhkan informasi lebih lanjut.';
 
@@ -731,41 +830,49 @@ class UserController extends Controller
         }
     }
 
-    private function sendManualDisableNotification(
+  private function sendManualDisableNotification(
         User $user,
         User $actor,
-        WhatsappService $whatsappService,
-        ?string $ipAddress
-    ): void
-    {
+        WhatsappService $whatsappService
+    ): void {
         $actorName = $actor->role === 'super_admin'
             ? 'Super Admin'
             : $actor->nama;
 
+        $waktuWib = now()
+            ->timezone('Asia/Jakarta')
+            ->format('d-m-Y H:i');
+
         $message = "Halo, {$user->nama}.\n\n"
             . "Akun Anda telah dinonaktifkan oleh administrator.\n\n"
-            . 'Tanggal: ' . now()->format('d-m-Y H:i') . "\n"
-            . 'Alamat IP admin: ' . ($ipAddress ?? '-') . "\n"
+            . "Tanggal: {$waktuWib} WIB\n"
             . "Dilakukan oleh: {$actorName}\n\n"
             . 'Silakan hubungi administrator apabila Anda membutuhkan informasi lebih lanjut.';
 
         try {
-            $sent = $whatsappService->send($user->telp, $message);
+            $sent = $whatsappService->send(
+                $user->telp,
+                $message
+            );
 
             if (!$sent) {
-                Log::warning('Failed to send manual-disable WhatsApp notification.', [
-                    'user_id' => $user->id,
-                    'actor_id' => $actor->id,
-                    'ip_address' => $ipAddress,
-                ]);
+                Log::warning(
+                    'Failed to send manual-disable WhatsApp notification.',
+                    [
+                        'user_id' => $user->id,
+                        'actor_id' => $actor->id,
+                    ]
+                );
             }
         } catch (\Throwable $exception) {
-            Log::warning('Failed to send manual-disable WhatsApp notification.', [
-                'user_id' => $user->id,
-                'actor_id' => $actor->id,
-                'ip_address' => $ipAddress,
-                'error' => $exception->getMessage(),
-            ]);
+            Log::warning(
+                'Failed to send manual-disable WhatsApp notification.',
+                [
+                    'user_id' => $user->id,
+                    'actor_id' => $actor->id,
+                    'error' => $exception->getMessage(),
+                ]
+            );
         }
     }
 

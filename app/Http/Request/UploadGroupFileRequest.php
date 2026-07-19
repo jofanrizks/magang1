@@ -15,6 +15,11 @@ class UploadGroupFileRequest extends FormRequest
     {
         return [
             'group_id' => ['required', 'integer', 'exists:groups,id'],
+            'service_option_id' => [
+                'required',
+                'integer',
+                'exists:service_options,id',
+            ],
             'file' => 'required|file|max:10240'
         ];
     }
@@ -27,6 +32,8 @@ class UploadGroupFileRequest extends FormRequest
             'file.max' => 'Ukuran file maksimal 10 MB.',
             'group_id.required' => 'Group tujuan wajib dipilih.',
             'group_id.exists' => 'Group tujuan tidak valid.',
+            'service_option_id.required' => 'Opsi layanan wajib dipilih.',
+            'service_option_id.exists' => 'Opsi layanan tidak valid.',
         ];
     }
 }

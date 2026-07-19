@@ -12,6 +12,8 @@ use App\Http\Controllers\BannerController;
 use App\Http\Controllers\Account\AccountController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\Account\GroupFileController;
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\Admin\ServiceController as AdminServiceController;
 
 //PUBLIC
 Route::post('/register', [RegisterController::class, 'register']);
@@ -37,7 +39,7 @@ Route::get('/setting', [SettingController::class, 'index']);
 Route::get('/groups', [GroupController::class, 'index']);
 //PROTECT
 
-Route::middleware('auth:api')->group(function () {
+Route::middleware(['auth:api', 'account.active'])->group(function () {
     Route::post('/logout', [LoginController::class, 'logout']);
     Route::get('/me', [LoginController::class, 'me']);
     Route::post('/account/change-required-password', [AccountController::class, 'changeRequiredPassword']);
@@ -47,6 +49,10 @@ Route::middleware('auth:api')->group(function () {
     });
 
     Route::middleware('role:super_admin,admin')->group(function () {
+        Route::get('/admin/services', [AdminServiceController::class, 'index']);
+        Route::get('/admin/services/{id}', [AdminServiceController::class, 'show']);
+        Route::put('/admin/services/{id}', [AdminServiceController::class, 'update']);
+
         // User Management
         Route::get('/users/pending', [UserController::class, 'pendingUsers']);
         Route::post('/users', [UserController::class, 'store']);
@@ -74,6 +80,8 @@ Route::middleware('auth:api')->group(function () {
     });
 
     Route::middleware('role:super_admin,admin,user,viewer')->group(function () {
+        Route::get('/services', [ServiceController::class, 'index']);
+        Route::get('/services/{id}', [ServiceController::class, 'show']);
         Route::get('/group-files', [GroupFileController::class, 'index']);
     });
 

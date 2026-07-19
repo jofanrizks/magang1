@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\ActivityLog;
 use App\Services\WhatsappService;
+use App\Support\ActivityLogContext;
 use Illuminate\Support\Facades\Log;
 
 class LoginController extends Controller
@@ -25,7 +26,7 @@ class LoginController extends Controller
                 $user,
                 'Login Failed',
                 'Login ditolak karena akun dinonaktifkan',
-                $request->ip()
+                $request
             );
 
             return response()->json([
@@ -50,7 +51,7 @@ class LoginController extends Controller
                     $user,
                     'Login Failed',
                     'Percobaan login gagal',
-                    $request->ip()
+                    $request
                 );
 
                 if ($attempts >= 3) {
@@ -63,7 +64,7 @@ class LoginController extends Controller
                         $user,
                         'Account Auto Disabled',
                         'Akun dinonaktifkan karena 3 kali percobaan login gagal',
-                        $request->ip()
+                        $request
                     );
 
                     $this->sendAutoDisableNotification(
@@ -94,7 +95,7 @@ class LoginController extends Controller
                 $user,
                 'Failed Login',
                 'Login ditolak karena akun belum disetujui admin',
-                $request->ip()
+                $request
             );
 
             auth()->logout();
@@ -111,7 +112,7 @@ class LoginController extends Controller
                 $user,
                 'Login Failed',
                 'Login ditolak karena akun dinonaktifkan',
-                $request->ip()
+                $request
             );
 
             auth()->logout();
@@ -128,7 +129,7 @@ class LoginController extends Controller
                 $user,
                 'Failed Login',
                 'Login ditolak karena akun belum aktivasi OTP',
-                $request->ip()
+                $request
             );
 
             auth()->logout();
@@ -146,7 +147,7 @@ class LoginController extends Controller
                 $user,
                 'Failed Login',
                 'Login ditolak karena akun tidak aktif',
-                $request->ip()
+                $request
             );
 
             auth()->logout();
@@ -165,7 +166,7 @@ class LoginController extends Controller
             $user,
             'Login',
             'User berhasil login ke sistem',
-            $request->ip()
+            $request
         );
 
         return response()->json([
@@ -187,7 +188,7 @@ class LoginController extends Controller
                 $user,
                 'Logout',
                 'User keluar dari sistem',
-                $request->ip()
+                $request
             );
         }
 
@@ -209,14 +210,14 @@ class LoginController extends Controller
         ]);
     }
 
-    private function logActivity(User $user, string $activity, string $description, ?string $ipAddress): void
+    private function logActivity(User $user, string $activity, string $description, Request $request): void
     {
         ActivityLog::create([
             'user_id' => $user->id,
             'actor_id' => null,
             'activity' => $activity,
             'description' => $description,
-            'ip_address' => $ipAddress,
+            ...ActivityLogContext::fromRequest($request),
         ]);
     }
 
@@ -225,10 +226,13 @@ class LoginController extends Controller
         WhatsappService $whatsappService,
         ?string $ipAddress = null
     ): void {
+        $waktuWib = now()
+            ->timezone('Asia/Jakarta')
+            ->format('d-m-Y H:i');
+
         $message = "Halo, {$user->nama}.\n\n"
             . "Akun Anda telah dinonaktifkan karena terdapat 3 kali percobaan login gagal.\n\n"
-            . 'Tanggal: ' . now()->format('d-m-Y H:i') . "\n"
-            . 'Alamat IP percobaan terakhir: ' . ($ipAddress ?? '-') . "\n\n"
+            . "Tanggal: {$waktuWib} WIB\n\n"
             . 'Jika ini bukan Anda, silakan lakukan reaktivasi akun menggunakan OTP atau hubungi administrator.';
 
         try {

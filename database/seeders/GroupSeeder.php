@@ -11,7 +11,7 @@ class GroupSeeder extends Seeder
     {
         foreach (range(1,5) as $i) {
 
-            Group::create([
+            Group::updateOrCreate([
 
                 'name' => "group-$i"
 

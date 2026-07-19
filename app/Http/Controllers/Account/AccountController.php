@@ -9,6 +9,7 @@ use App\Services\OtpService;
 use App\Services\WhatsappService;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\ActivityLogContext;
 
 class AccountController extends Controller
 {
@@ -67,7 +68,7 @@ class AccountController extends Controller
             'user_id' => $user->id,
             'activity' => 'Reactivate OTP Sent',
             'description' => 'OTP reaktivasi akun dikirim',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([
@@ -131,20 +132,24 @@ class AccountController extends Controller
             'user_id' => $user->id,
             'activity' => 'Reactivate Account',
             'description' => 'Akun berhasil diaktifkan kembali menggunakan OTP',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         $activityLogs = ActivityLog::where('user_id', $user->id)
-            ->latest()
-            ->limit(10)
-            ->get([
-                'id',
-                'user_id',
-                'activity',
-                'description',
-                'ip_address',
-                'created_at',
-            ]);
+        ->where('activity', 'Login Failed')
+        ->latest()
+        ->get([
+            'id',
+            'user_id',
+            'activity',
+            'description',
+            'ip_address',
+            'browser',
+            'operating_system',
+            'device_type',
+            'user_agent',
+            'created_at',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -210,7 +215,7 @@ class AccountController extends Controller
             'user_id' => $user->id,
             'activity' => 'Request Disable OTP',
             'description' => 'Pengguna meminta OTP untuk menonaktifkan akun',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
         return response()->json([
             'success' => true,
@@ -261,7 +266,7 @@ class AccountController extends Controller
             'user_id' => $user->id,
             'activity' => 'Account Disabled',
             'description' => 'Pengguna menonaktifkan akun',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
 
         ]);
 
@@ -306,7 +311,7 @@ class AccountController extends Controller
             'actor_id' => $user->id,
             'activity' => 'Required Password Changed',
             'description' => 'Pengguna mengganti password wajib',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\OtpService;
 use Illuminate\Http\Request;
 use App\Models\ActivityLog;
+use App\Support\ActivityLogContext;
 
 class ActivationController extends Controller
 {
@@ -61,7 +62,7 @@ class ActivationController extends Controller
             'user_id' => $user->id,
             'activity' => 'Approved',
             'description' => 'Akun disetujui admin',
-            'ip_address' => $request->ip(),
+            ...ActivityLogContext::fromRequest($request),
         ]);
 
         return response()->json([
