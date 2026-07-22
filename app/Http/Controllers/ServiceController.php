@@ -111,13 +111,6 @@ class ServiceController extends Controller
         }
 
         $query->where('is_active', true);
-
-        if ($user->role === 'user') {
-            $groupIds = $user->groups()
-                ->pluck('groups.id');
-
-            $query->whereIn('group_id', $groupIds);
-        }
     }
 
     private function canViewService(ManagedService $service, $user): bool

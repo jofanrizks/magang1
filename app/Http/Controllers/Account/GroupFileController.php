@@ -226,12 +226,11 @@ class GroupFileController extends Controller
 
             ActivityLog::create([
                 'user_id' => $user->id,
-                'activity' => 'Upload File',
+                'actor_id' => $user->id,
+                'activity' => 'Upload Group File',
                 'description' =>
-                    'Mengunggah file "' .
-                    $groupFile->original_name .
-                    '" pada opsi ' .
-                    $option->name,
+                    'Mengunggah file ' .
+                    $groupFile->original_name,
                 ...ActivityLogContext::fromRequest($request),
             ]);
         } catch (\Throwable $exception) {
@@ -284,7 +283,9 @@ class GroupFileController extends Controller
                 'integer',
                 'exists:service_options,id',
             ],
-            'file' => 'required|file|max:10240',
+            'file' => $this->groupFileValidationRules(),
+        ], [
+            ...$this->groupFileValidationMessages(),
         ]);
 
         $option = $this->findServiceOption(
@@ -324,14 +325,10 @@ class GroupFileController extends Controller
             ActivityLog::create([
                 'user_id' => $user->id,
                 'actor_id' => $user->id,
-                'activity' => 'Admin Upload File',
+                'activity' => 'Upload Group File',
                 'description' =>
-                    'Mengunggah file "' .
-                    $groupFile->original_name .
-                    '" ke group-' .
-                    $validated['group_id'] .
-                    ' opsi ' .
-                    $option->name,
+                    'Mengunggah file ' .
+                    $groupFile->original_name,
                 ...ActivityLogContext::fromRequest($request),
             ]);
         } catch (\Throwable $exception) {
@@ -352,6 +349,156 @@ class GroupFileController extends Controller
             'message' => 'File berhasil diunggah oleh admin',
             'data' => $groupFile,
         ], 201);
+    }
+
+    public function replace(
+        Request $request,
+        int $groupFile
+    ): JsonResponse {
+        $user = Auth::user();
+        $groupFile = GroupFile::find($groupFile);
+
+        if (!$groupFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File tidak ditemukan.',
+            ], 404);
+        }
+
+        if ($user->role === 'viewer') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Viewer tidak memiliki akses untuk mengganti file.',
+            ], 403);
+        }
+
+        $isAdmin = in_array(
+            $user->role,
+            ['super_admin', 'admin'],
+            true
+        );
+        $isUploader = (int) $groupFile->user_id === (int) $user->id;
+
+        if (!$isAdmin && !$isUploader) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk mengganti file ini.',
+            ], 403);
+        }
+
+        if (!$this->canAccessGroupFile($user, $groupFile)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses ke group file ini.',
+            ], 403);
+        }
+
+        $request->validate([
+            'file' => $this->groupFileValidationRules(),
+        ], [
+            ...$this->groupFileValidationMessages(),
+        ]);
+
+        $uploadedFile = $request->file('file');
+        $extension = strtolower(
+            $uploadedFile->getClientOriginalExtension()
+        );
+        $fileName = Str::uuid()->toString();
+
+        if ($extension !== '') {
+            $fileName .= '.' . $extension;
+        }
+
+        $newFilePath = $uploadedFile->storeAs(
+            'group-files/' . $groupFile->group_id,
+            $fileName,
+            'public'
+        );
+
+        $oldFilePath = $groupFile->file_path;
+        $oldOriginalName = $groupFile->original_name;
+
+        DB::beginTransaction();
+
+        try {
+            $groupFile->update([
+                'original_name' => $uploadedFile->getClientOriginalName(),
+                'file_name' => $fileName,
+                'file_path' => $newFilePath,
+                'file_size' => $uploadedFile->getSize(),
+                'mime_type' => $uploadedFile->getMimeType(),
+            ]);
+
+            ActivityLog::create([
+                'user_id' => $groupFile->user_id,
+                'actor_id' => $user->id,
+                'activity' => 'Replace Group File',
+                'description' =>
+                    'File ' .
+                    $oldOriginalName .
+                    ' diganti menjadi ' .
+                    $groupFile->original_name,
+                ...ActivityLogContext::fromRequest($request),
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            Storage::disk('public')->delete($newFilePath);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'File gagal diganti.',
+            ], 500);
+        }
+
+        Storage::disk('public')->delete($oldFilePath);
+
+        $groupFile->load([
+            'group',
+            'user:id,nama',
+            'serviceOption:id,service_id,name',
+            'serviceOption.service:id,group_id,code,name',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File berhasil diganti.',
+            'data' => $groupFile,
+        ]);
+    }
+
+    public function download(int $groupFile)
+    {
+        $user = Auth::user();
+        $groupFile = GroupFile::find($groupFile);
+
+        if (!$groupFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File tidak ditemukan.',
+            ], 404);
+        }
+
+        if (!$this->canAccessGroupFile($user, $groupFile, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses ke group file ini.',
+            ], 403);
+        }
+
+        if (!Storage::disk('public')->exists($groupFile->file_path)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File tidak ditemukan.',
+            ], 404);
+        }
+
+        return Storage::disk('public')->download(
+            $groupFile->file_path,
+            $groupFile->original_name
+        );
     }
 
     public function move(
@@ -630,6 +777,55 @@ class GroupFileController extends Controller
             'success' => true,
             'message' => 'File berhasil dihapus oleh admin',
         ]);
+    }
+
+    private function groupFileValidationRules(): array
+    {
+        return [
+            'required',
+            'file',
+            'mimes:pdf,jpg,jpeg,png,webp',
+            'max:10240',
+        ];
+    }
+
+    private function groupFileValidationMessages(): array
+    {
+        return [
+            'file.required' => 'File wajib dipilih.',
+            'file.file' => 'File tidak valid.',
+            'file.mimes' =>
+                'File yang diperbolehkan hanya PDF, JPG, JPEG, PNG, atau WEBP.',
+            'file.max' => 'Ukuran file maksimal 10 MB.',
+        ];
+    }
+
+    private function canAccessGroupFile(
+        $user,
+        GroupFile $groupFile,
+        bool $allowViewer = false
+    ): bool {
+        if (
+            in_array(
+                $user->role,
+                ['admin', 'super_admin'],
+                true
+            )
+        ) {
+            return true;
+        }
+
+        if ($user->role === 'viewer') {
+            return $allowViewer;
+        }
+
+        if ($user->role !== 'user') {
+            return false;
+        }
+
+        return $user->groups()
+            ->where('groups.id', $groupFile->group_id)
+            ->exists();
     }
 
     private function findServiceOption(int $id): ?ServiceOption

@@ -83,6 +83,8 @@ Route::middleware(['auth:api', 'account.active'])->group(function () {
         Route::get('/services', [ServiceController::class, 'index']);
         Route::get('/services/{id}', [ServiceController::class, 'show']);
         Route::get('/group-files', [GroupFileController::class, 'index']);
+        Route::post('/group-files/{groupFile}/replace', [GroupFileController::class, 'replace']);
+        Route::get('/group-files/{groupFile}/download', [GroupFileController::class, 'download']);
     });
 
     Route::middleware('role:user')->group(function () {

@@ -4,9 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\ServiceOption;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class GroupFile extends Model
 {
+    protected $appends = [
+        'file_url',
+        'file_type',
+    ];
+
     protected $fillable = [
         'user_id',
         'group_id',
@@ -31,5 +38,31 @@ class GroupFile extends Model
     public function serviceOption()
     {
         return $this->belongsTo(ServiceOption::class);
+    }
+
+    public function getFileUrlAttribute(): ?string
+    {
+        if (!$this->file_path) {
+            return null;
+        }
+
+        if (Str::startsWith($this->file_path, ['http://', 'https://'])) {
+            return $this->file_path;
+        }
+
+        return Storage::disk('public')->url($this->file_path);
+    }
+
+    public function getFileTypeAttribute(): string
+    {
+        if ($this->mime_type === 'application/pdf') {
+            return 'pdf';
+        }
+
+        if (Str::startsWith((string) $this->mime_type, 'image/')) {
+            return 'image';
+        }
+
+        return 'other';
     }
 }
